@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { MiniMap, FullMap, LocationPicker, type IssueMarker } from "./MapView";
 
 type Page =
   | "dashboard"
@@ -105,20 +106,11 @@ const issueRows = [
   { id: "CR-2819", title: "Damaged pedestrian sign", location: "14 Market Street", status: "verified" as const, time: "Verified yesterday", category: "Signboard" },
 ];
 
-function MapVisual({ large = false, onIssue }: { large?: boolean; onIssue?: () => void }) {
-  const markers = [
-    ["marker-blue", "28%", "32%", "4"],
-    ["marker-amber", "62%", "28%", "3"],
-    ["marker-green", "74%", "66%", "8"],
-    ["marker-red", "40%", "70%", "1"],
-    ["marker-blue", "84%", "42%", "6"],
-  ];
-  return <div className={`map-canvas ${large ? "map-large" : ""}`}>
-    <div className="map-road road-a" /><div className="map-road road-b" /><div className="map-road road-c" />
-    <span className="map-label label-a">CEDAR AVE</span><span className="map-label label-b">OAKRIDGE PARK</span>
-    {markers.map(([cls, left, top, count], i) => <button onClick={i === 1 ? onIssue : undefined} aria-label={`${count} civic issues`} className={`map-marker ${cls}`} style={{ left, top }} key={i}>{count}</button>)}
-    <div className="map-attribution">Mapbox-style civic map</div>
-  </div>;
+// MapVisual is replaced by real Mapbox components from MapView.tsx.
+// The three variants are: MiniMap (previews), LocationPicker (report form), FullMap (map page).
+// This stub is kept so any missed reference fails loudly.
+function MapVisual(_props: { large?: boolean; onIssue?: () => void }) {
+  return <div style={{ height: 285, background: "#e9eee8", borderRadius: 8, display: "grid", placeItems: "center", color: "#718096", fontSize: 12 }}>Map loading…</div>;
 }
 
 function StatCard({ icon, value, label, trend, tone = "blue" }: { icon: IconName; value: string; label: string; trend: string; tone?: string }) {
@@ -135,7 +127,7 @@ function Dashboard({ go }: { go: (p: Page) => void }) {
       <StatCard icon="alert" value="1" label="Reopened issue" trend="Action in progress" tone="red" />
     </div>
     <div className="dashboard-grid">
-      <Card className="map-card"><div className="card-heading"><div><h2>Issues near you</h2><p>Within 2 km of your saved location</p></div><button className="text-button" onClick={() => go("map")}>View map <Icon name="arrow" size={16} /></button></div><MapVisual onIssue={() => go("issue")} /><div className="map-legend"><span><i className="dot blue" />Reported</span><span><i className="dot amber" />Pending</span><span><i className="dot green" />Verified</span><span><i className="dot red" />Reopened</span></div></Card>
+      <Card className="map-card"><div className="card-heading"><div><h2>Issues near you</h2><p>Within 2 km of your saved location</p></div><button className="text-button" onClick={() => go("map")}>View map <Icon name="arrow" size={16} /></button></div><MiniMap height={285} zoom={14} onMarkerClick={(_issue: IssueMarker) => go("issue")} /><div className="map-legend"><span><i className="dot blue" />Reported</span><span><i className="dot amber" />Pending</span><span><i className="dot green" />Verified</span><span><i className="dot red" />Reopened</span></div></Card>
       <Card className="verification-card"><div className="card-heading"><div><h2>Verification requests</h2><p>Repairs near you need a second look</p></div><span className="count-badge">2</span></div><img src={PHOTO} alt="Streetlight on Cedar Avenue awaiting repair verification" /><div className="verification-content"><Badge status="pending" /><h3>Streetlight repaired on Cedar Avenue</h3><p className="meta"><Icon name="pin" size={16} /> 0.4 km away · <Icon name="clock" size={16} /> 5 days left</p><div className="progress-line"><span /></div><Button onClick={() => go("verify")} className="wide">Review repair evidence <Icon name="arrow" size={17} /></Button></div></Card>
     </div>
     <div className="section-heading"><div><h2>Recent activity</h2><p>Updates from issues you follow and reported</p></div><button className="text-button">View all <Icon name="arrow" size={16} /></button></div>
@@ -152,7 +144,7 @@ function ReportIssue({ go }: { go: (p: Page) => void }) {
     <div className="stepper">{["Category", "Location", "Evidence", "Review"].map((label, i) => <div className={`${step >= i + 1 ? "active" : ""}`} key={label}><span>{step > i + 1 ? <Icon name="check" size={15} /> : i + 1}</span><p>{label}</p></div>)}</div>
     <Card className="form-card">
       {step === 1 && <><p className="eyebrow">Step 1 of 4</p><h2>What type of issue are you reporting?</h2><p className="form-intro">Choose the category that best describes the problem.</p><div className="category-grid">{categories.map((c, i) => <button className={category === c ? "selected" : ""} onClick={() => setCategory(c)} key={c}><span><Icon name={i === 0 ? "plus" : i === 3 ? "alert" : "file"} /></span>{c}{category === c && <i><Icon name="check" size={14} /></i>}</button>)}</div></>}
-      {step === 2 && <><p className="eyebrow">Step 2 of 4</p><h2>Where is the issue?</h2><p className="form-intro">Place the pin as accurately as possible.</p><MapVisual /><label className="field-label">Street address or landmark<input defaultValue="Cedar Avenue & 8th Street" /></label><button className="location-button"><Icon name="pin" size={17} />Use my current location</button></>}
+      {step === 2 && <><p className="eyebrow">Step 2 of 4</p><h2>Where is the issue?</h2><p className="form-intro">Click the map or drag the pin to pinpoint the issue location.</p><LocationPicker onLocationChange={(_lat, _lng) => { /* store lat/lng in state before submit */ }} /><label className="field-label">Street address or landmark<input defaultValue="Cedar Avenue & 8th Street" /></label><button className="location-button"><Icon name="pin" size={17} />Use my current location</button></>}
       {step === 3 && <><p className="eyebrow">Step 3 of 4</p><h2>Add clear evidence</h2><p className="form-intro">Photos make your report easier to assess and verify.</p><button className="upload-zone"><span><Icon name="camera" size={26} /></span><strong>Upload photos or take a picture</strong><small>JPG or PNG, up to 10 MB each</small></button><label className="field-label">Describe the issue<textarea defaultValue="The streetlight has been out for three nights, leaving the pedestrian crossing very dark." /></label></>}
       {step === 4 && <><p className="eyebrow">Step 4 of 4</p><h2>Review your report</h2><p className="form-intro">Make sure these details are accurate before submitting.</p><div className="review-box"><div><span>Category</span><strong>{category}</strong></div><div><span>Location</span><strong>Cedar Avenue & 8th Street</strong></div><div><span>Evidence</span><strong>2 photographs attached</strong></div><div><span>Description</span><strong>Streetlight out near the pedestrian crossing for three nights.</strong></div></div><div className="trust-note"><Icon name="check" /><p><strong>Community verification is required</strong><br />This report cannot be marked verified resolved without repair evidence and citizen validation.</p></div></>}
       <div className="form-actions">{step > 1 && <Button variant="secondary" onClick={() => setStep(step - 1)}>Back</Button>}<Button onClick={() => step < 4 ? setStep(step + 1) : go("issue")}>{step === 4 ? "Submit issue" : "Continue"} <Icon name="arrow" size={17} /></Button></div>
@@ -173,7 +165,7 @@ function IssueDetails({ go }: { go: (p: Page) => void }) {
     <div className="issue-grid">
       <div className="issue-content">
         <Card><div className="card-heading"><div><h2>Repair evidence</h2><p>Submitted by Riverside Public Works · June 12, 2025</p></div><span className="evidence-check"><Icon name="check" size={16} />Official evidence</span></div><div className="photo-compare"><figure><img src={PHOTO} alt="Streetlight before repair" /><figcaption><span>BEFORE</span>Reported June 7</figcaption></figure><figure><img className="after-photo" src={PHOTO} alt="Streetlight after repair" /><figcaption><span>AFTER</span>Repair claimed June 12</figcaption></figure></div><div className="repair-details"><div><span>Repair completed</span><strong>LED driver and wiring replaced</strong></div><div><span>Assigned team</span><strong>Electrical Response Unit 3</strong></div><div><span>Work order</span><strong>WO-2025-1198</strong></div></div></Card>
-        <Card><h2>Location & report details</h2><MapVisual /><div className="detail-list"><p><span>Reported by</span><strong>Maya Chen · Verified resident</strong></p><p><span>Reported on</span><strong>June 7, 2025 at 9:42 PM</strong></p><p><span>Original report</span><strong>Light has been out for three nights near a busy crossing.</strong></p></div></Card>
+        <Card><h2>Location & report details</h2><MiniMap height={190} markerStatus="DEPARTMENT_CLOSED" zoom={15} /><div className="detail-list"><p><span>Reported by</span><strong>Maya Chen · Verified resident</strong></p><p><span>Reported on</span><strong>June 7, 2025 at 9:42 PM</strong></p><p><span>Original report</span><strong>Light has been out for three nights near a busy crossing.</strong></p></div></Card>
       </div>
       <aside className="issue-sidebar">
         <Card className="verify-panel"><div className="shield"><Icon name="users" size={26} /></div><h2>Help verify this repair</h2><p>Visit the location and confirm whether the streetlight is working.</p><div className="verification-numbers"><div><strong>14</strong><span>Verified</span></div><div><strong>2</strong><span>Disputed</span></div></div><Button variant="success" icon="check" onClick={() => go("verify")} className="wide">Verify repair</Button><Button variant="danger" icon="alert" onClick={() => go("verify")} className="wide">Report still unresolved</Button><small>Your vote is private. One vote per verification cycle.</small></Card>
@@ -185,7 +177,7 @@ function IssueDetails({ go }: { go: (p: Page) => void }) {
 }
 
 function CivicMap({ go }: { go: (p: Page) => void }) {
-  return <div className="full-map-page"><div className="map-toolbar"><div className="search-box"><Icon name="search" /><input placeholder="Search address, ward, or issue ID" /></div><button className="filter active">All categories</button><button className="filter">Status</button><button className="filter">Date reported</button><Button variant="secondary" icon="pin">Issues near me</Button></div><div className="map-shell"><MapVisual large onIssue={() => go("issue")} /><Card className="floating-issue"><img src={PHOTO} alt="Cedar Avenue streetlight" /><div><Badge status="pending" /><span className="issue-id">CR-2841 · Streetlight</span><h3>Streetlight repaired on Cedar Avenue</h3><p><Icon name="pin" size={15} />Cedar Ave & 8th St · 0.4 km</p><Button onClick={() => go("issue")} className="wide">View issue details</Button></div></Card><div className="map-legend floating"><strong>Issue status</strong><span><i className="dot blue" />Reported</span><span><i className="dot amber" />Pending verification</span><span><i className="dot green" />Verified resolved</span><span><i className="dot red" />Reopened</span></div></div></div>;
+  return <div className="full-map-page"><div className="map-toolbar"><div className="search-box"><Icon name="search" /><input placeholder="Search address, ward, or issue ID" /></div><button className="filter active">All categories</button><button className="filter">Status</button><button className="filter">Date reported</button><Button variant="secondary" icon="pin">Issues near me</Button></div><div className="map-shell"><FullMap onMarkerClick={(_issue: IssueMarker) => go("issue")} verificationCenter={{ lat: 12.9695, lng: 79.1552 }} /><Card className="floating-issue"><img src={PHOTO} alt="Cedar Avenue streetlight" /><div><Badge status="pending" /><span className="issue-id">CR-2841 · Streetlight</span><h3>Streetlight repaired on Cedar Avenue</h3><p><Icon name="pin" size={15} />Cedar Ave & 8th St · 0.4 km</p><Button onClick={() => go("issue")} className="wide">View issue details</Button></div></Card><div className="map-legend floating"><strong>Issue status</strong><span><i className="dot blue" />Reported</span><span><i className="dot amber" />Pending verification</span><span><i className="dot green" />Verified resolved</span><span><i className="dot red" />Reopened</span></div></div></div>;
 }
 
 function VerifyPage({ go }: { go: (p: Page) => void }) {
