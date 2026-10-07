@@ -106,7 +106,6 @@ router.post(
 
       // 2 disputes = automatically reopen
       if (disputeCount >= 2) {
-
         await supabase
           .from('civic_issues')
           .update({
@@ -121,12 +120,41 @@ router.post(
             issue_id: id,
             previous_status: 'DEPARTMENT_CLOSED',
             new_status: 'REOPENED',
-            reason: 'System: Dispute threshold reached'
+            reason: 'System: Dispute threshold reached (2+ citizen disputes)'
           });
 
         return res.json({
           success: true,
           current_status: 'REOPENED',
+          stats: {
+            confirm_count: confirmCount,
+            dispute_count: disputeCount
+          }
+        });
+      }
+
+      // Consensus reached: 3+ confirms (or 2+ confirms with 0 disputes) = VERIFIED_RESOLVED
+      if (confirmCount >= 3 || (confirmCount >= 2 && disputeCount === 0)) {
+        await supabase
+          .from('civic_issues')
+          .update({
+            status: 'VERIFIED_RESOLVED',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', id);
+
+        await supabase
+          .from('issue_status_history')
+          .insert({
+            issue_id: id,
+            previous_status: 'DEPARTMENT_CLOSED',
+            new_status: 'VERIFIED_RESOLVED',
+            reason: `System: Community consensus reached (${confirmCount} confirmations)`
+          });
+
+        return res.json({
+          success: true,
+          current_status: 'VERIFIED_RESOLVED',
           stats: {
             confirm_count: confirmCount,
             dispute_count: disputeCount

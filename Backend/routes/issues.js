@@ -74,14 +74,42 @@ router.get('/', async (_req, res) => {
 
     const enriched = issuesList.map((item) => {
       const coords = parseLocation(item.location);
+      const confirms = votesMap[item.id]?.confirms || 0;
+      const disputes = votesMap[item.id]?.disputes || 0;
+
+      let currentStatus = item.status;
+      if (item.status === 'DEPARTMENT_CLOSED' && disputes >= 2) {
+        currentStatus = 'REOPENED';
+        supabase
+          .from('civic_issues')
+          .update({ status: 'REOPENED', updated_at: new Date().toISOString() })
+          .eq('id', item.id)
+          .then(() => {});
+      } else if (item.status === 'DEPARTMENT_CLOSED' && (confirms >= 3 || (confirms >= 2 && disputes === 0))) {
+        currentStatus = 'VERIFIED_RESOLVED';
+        supabase
+          .from('civic_issues')
+          .update({ status: 'VERIFIED_RESOLVED', updated_at: new Date().toISOString() })
+          .eq('id', item.id)
+          .then(() => {
+            supabase.from('issue_status_history').insert({
+              issue_id: item.id,
+              previous_status: 'DEPARTMENT_CLOSED',
+              new_status: 'VERIFIED_RESOLVED',
+              reason: `System: Community consensus reached (${confirms} confirms, ${disputes} disputes)`
+            });
+          });
+      }
+
       return {
         ...item,
+        status: currentStatus,
         latitude: coords.latitude,
         longitude: coords.longitude,
         after_image_url: claimsMap[item.id]?.after_image_url || null,
         repair_notes: claimsMap[item.id]?.repair_notes || null,
-        confirm_count: votesMap[item.id]?.confirms || 0,
-        dispute_count: votesMap[item.id]?.disputes || 0,
+        confirm_count: confirms,
+        dispute_count: disputes,
       };
     });
 

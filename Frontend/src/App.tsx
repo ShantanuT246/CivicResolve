@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type ReactNode } from "react";
+import { useState, useEffect, useCallback, useMemo, type ReactNode } from "react";
 import { MiniMap, FullMap, LocationPicker, type IssueMarker } from "./MapView";
 import { api } from "./api";
 import { uploadImage } from "./uploadImage";
@@ -232,34 +232,48 @@ function Dashboard({
   onSelectIssue: (id: string) => void;
 }) {
   const [filter, setFilter] = useState<"ALL" | "DEPARTMENT_CLOSED" | "VERIFIED_RESOLVED" | "REOPENED">("ALL");
+  const [scope, setScope] = useState<"ALL" | "MY">("ALL");
 
-  const total = issues.length;
-  const pending = issues.filter((i) => i.status === "DEPARTMENT_CLOSED").length;
-  const verified = issues.filter((i) => i.status === "VERIFIED_RESOLVED").length;
-  const reopened = issues.filter((i) => i.status === "REOPENED").length;
+  const myCount = useMemo(() => {
+    return issues.filter((i) => i.reporter_id === currentUser.id).length;
+  }, [issues, currentUser.id]);
 
-  const filteredIssues = issues.filter((i) => {
+  const scopedIssues = useMemo(() => {
+    if (scope === "MY") {
+      return issues.filter((i) => i.reporter_id === currentUser.id);
+    }
+    return issues;
+  }, [issues, scope, currentUser.id]);
+
+  const total = scopedIssues.length;
+  const pending = scopedIssues.filter((i) => i.status === "DEPARTMENT_CLOSED").length;
+  const verified = scopedIssues.filter((i) => i.status === "VERIFIED_RESOLVED").length;
+  const reopened = scopedIssues.filter((i) => i.status === "REOPENED").length;
+
+  const filteredIssues = scopedIssues.filter((i) => {
     if (filter === "ALL") return true;
     return i.status === filter;
   });
 
-  const awaitingVerifyIssue = issues.find((i) => i.status === "DEPARTMENT_CLOSED") || issues[0];
+  const awaitingVerifyIssue = scopedIssues.find((i) => i.status === "DEPARTMENT_CLOSED") || scopedIssues[0];
 
   const filterTitle =
-    filter === "ALL"
-      ? "All community reports"
-      : filter === "DEPARTMENT_CLOSED"
-      ? "Issues awaiting citizen verification"
-      : filter === "VERIFIED_RESOLVED"
-      ? "Verified resolved issues"
-      : "Reopened (failed repairs)";
+    scope === "MY"
+      ? (filter === "ALL" ? "My submitted reports" : `My ${filter.replace(/_/g, " ")} reports`)
+      : (filter === "ALL"
+          ? "All community reports"
+          : filter === "DEPARTMENT_CLOSED"
+          ? "Issues awaiting citizen verification"
+          : filter === "VERIFIED_RESOLVED"
+          ? "Verified resolved issues"
+          : "Reopened (failed repairs)");
 
   return (
     <div>
       <PageHeader
         eyebrow={`${currentUser.roleTitle} dashboard`}
         title={`Welcome, ${currentUser.name}`}
-        text="Click any metric card below to filter the reports list."
+        text={scope === "MY" ? "Viewing only reports submitted by your account." : "Click any metric card below to filter the reports list."}
         action={
           currentUser.role === "citizen" ? (
             <Button icon="plus" onClick={() => go("report")}>Report an issue</Button>
@@ -268,6 +282,22 @@ function Dashboard({
           )
         }
       />
+      {currentUser.role === "citizen" && (
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          <button
+            className={`filter ${scope === "ALL" ? "active" : ""}`}
+            onClick={() => { setScope("ALL"); setFilter("ALL"); }}
+          >
+            🌐 Community feed ({issues.length})
+          </button>
+          <button
+            className={`filter ${scope === "MY" ? "active" : ""}`}
+            onClick={() => { setScope("MY"); setFilter("ALL"); }}
+          >
+            👤 My submissions only ({myCount})
+          </button>
+        </div>
+      )}
       <div className="stats-grid">
         <StatCard
           icon="file"
@@ -420,10 +450,10 @@ function ReportIssue({
 }) {
   const [step, setStep] = useState(1);
   const [category, setCategory] = useState("Streetlight");
-  const [address, setAddress] = useState("Cedar Avenue & 8th Street");
+  const [address, setAddress] = useState("");
   const [lat, setLat] = useState(12.9692);
   const [lng, setLng] = useState(79.1559);
-  const [description, setDescription] = useState("Streetlight has been flickering and completely out near pedestrian crosswalk.");
+  const [description, setDescription] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string>("");
   const [loading, setLoading] = useState(false);
@@ -913,27 +943,77 @@ function CivicMap({
   go: (p: Page) => void;
   onSelectIssue: (id: string) => void;
 }) {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
   const [activeIssue, setActiveIssue] = useState<IssueItem | null>(issues[0] || null);
+
+  const categories = useMemo(() => {
+    return Array.from(new Set(issues.map((i) => i.category).filter(Boolean)));
+  }, [issues]);
+
+  const filteredIssues = useMemo(() => {
+    return issues.filter((i) => {
+      const q = searchTerm.trim().toLowerCase();
+      const matchesSearch =
+        !q ||
+        i.title?.toLowerCase().includes(q) ||
+        i.address_text?.toLowerCase().includes(q) ||
+        i.id?.toLowerCase().includes(q) ||
+        i.category?.toLowerCase().includes(q);
+      const matchesCategory =
+        selectedCategory === "ALL" ||
+        i.category?.toLowerCase() === selectedCategory.toLowerCase();
+      return matchesSearch && matchesCategory;
+    });
+  }, [issues, searchTerm, selectedCategory]);
+
+  useEffect(() => {
+    if (filteredIssues.length > 0) {
+      if (!activeIssue || !filteredIssues.some((i) => i.id === activeIssue.id)) {
+        setActiveIssue(filteredIssues[0]);
+      }
+    } else {
+      setActiveIssue(null);
+    }
+  }, [filteredIssues, activeIssue]);
 
   return (
     <div className="full-map-page">
       <div className="map-toolbar">
         <div className="search-box">
           <Icon name="search" />
-          <input placeholder="Search address, ward, or issue ID" />
+          <input
+            placeholder="Search address, ward, or issue ID"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
         </div>
-        <button className="filter active">All categories</button>
-        <button className="filter">Live Supabase Feed</button>
-        <Button variant="secondary" icon="pin">Near me</Button>
+        <button
+          className={`filter ${selectedCategory === "ALL" ? "active" : ""}`}
+          onClick={() => setSelectedCategory("ALL")}
+        >
+          All categories ({issues.length})
+        </button>
+        {categories.map((cat) => (
+          <button
+            key={cat}
+            className={`filter ${selectedCategory === cat ? "active" : ""}`}
+            onClick={() => setSelectedCategory(cat!)}
+          >
+            {cat}
+          </button>
+        ))}
+        <button className="filter" style={{ opacity: 0.85, cursor: "default" }}>
+          Live Feed ({filteredIssues.length} visible)
+        </button>
       </div>
       <div className="map-shell">
         <FullMap
-          issues={issues as IssueMarker[]}
+          issues={filteredIssues as IssueMarker[]}
           onMarkerClick={(marker: IssueMarker) => {
             const found = issues.find((i) => i.id === marker.id);
             if (found) setActiveIssue(found);
           }}
-          verificationCenter={{ lat: 12.9695, lng: 79.1552 }}
         />
         {activeIssue && (
           <Card className="floating-issue">
@@ -945,6 +1025,37 @@ function CivicMap({
               <p><Icon name="pin" size={15} />{activeIssue.address_text || "Community location"}</p>
               <Button onClick={() => { onSelectIssue(activeIssue.id); go("issue"); }} className="wide">
                 View issue details
+              </Button>
+            </div>
+          </Card>
+        )}
+        {issues.length === 0 && (
+          <Card className="floating-issue" style={{ maxWidth: 330 }}>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, color: "var(--navy-900)" }}>
+                <span style={{ display: "grid", placeItems: "center", width: 26, height: 26, borderRadius: "50%", background: "rgba(39,132,94,.12)", color: "var(--green-700)" }}>
+                  <Icon name="check" size={16} />
+                </span>
+                <strong style={{ fontSize: 14 }}>No Active Reports</strong>
+              </div>
+              <p style={{ margin: "0 0 12px", color: "var(--slate-500)", fontSize: 13, lineHeight: 1.45 }}>
+                The map is clean. As community members submit reports, pins will appear in real time.
+              </p>
+              <Button onClick={() => go("report")} className="wide" icon="plus">
+                Report an Issue
+              </Button>
+            </div>
+          </Card>
+        )}
+        {issues.length > 0 && filteredIssues.length === 0 && (
+          <Card className="floating-issue" style={{ maxWidth: 320 }}>
+            <div>
+              <h3 style={{ margin: "0 0 6px", fontSize: 14 }}>No matching reports</h3>
+              <p style={{ margin: "0 0 10px", color: "var(--slate-500)", fontSize: 12 }}>
+                Try adjusting your search query or category filters.
+              </p>
+              <Button variant="secondary" onClick={() => { setSearchTerm(""); setSelectedCategory("ALL"); }} className="wide">
+                Clear Filters
               </Button>
             </div>
           </Card>
@@ -1366,23 +1477,35 @@ function Department({
   );
 }
 
-function MyReports({ issues, go, onSelectIssue }: { issues: IssueItem[]; go: (p: Page) => void; onSelectIssue: (id: string) => void }) {
+function MyReports({
+  issues,
+  currentUser,
+  go,
+  onSelectIssue,
+}: {
+  issues: IssueItem[];
+  currentUser: UserAccount;
+  go: (p: Page) => void;
+  onSelectIssue: (id: string) => void;
+}) {
+  const myIssues = issues.filter((i) => i.reporter_id === currentUser.id);
+
   return (
     <div>
       <PageHeader
         eyebrow="Citizen records"
         title="My reports"
-        text="Track every issue submitted and its complete verification trail."
+        text="Track every issue submitted under your account and its verification status."
         action={<Button icon="plus" onClick={() => go("report")}>Report an issue</Button>}
       />
-      {issues.length > 0 ? (
+      {myIssues.length > 0 ? (
         <Card className="table-card">
           <table>
             <thead>
               <tr><th>Issue ID</th><th>Category & location</th><th>Current status</th><th>Citizen votes</th><th /></tr>
             </thead>
             <tbody>
-              {issues.map((i) => (
+              {myIssues.map((i) => (
                 <tr key={i.id} onClick={() => { onSelectIssue(i.id); go("issue"); }} className="clickable-row">
                   <td><strong>{i.id.slice(0, 8)}</strong></td>
                   <td><strong>{i.category}</strong><span>{i.address_text || "GPS location"}</span></td>
@@ -1397,8 +1520,11 @@ function MyReports({ issues, go, onSelectIssue }: { issues: IssueItem[]; go: (p:
       ) : (
         <Card className="empty-state-card">
           <div className="empty-state-icon"><Icon name="file" size={28} /></div>
-          <h3 className="empty-state-title">No reports submitted yet</h3>
-          <p className="empty-state-sub">Spot an issue in your neighborhood? Click below to submit a live civic report to the municipality.</p>
+          <h3 className="empty-state-title">No reports submitted by you yet</h3>
+          <p className="empty-state-sub">
+            You haven't submitted any civic issues under account ({currentUser.email || currentUser.name}).
+            Spot a problem in your neighborhood? Click below to submit your first report.
+          </p>
           <Button icon="plus" onClick={() => go("report")}>Report an issue</Button>
         </Card>
       )}
@@ -2186,7 +2312,14 @@ function Shell({
               onRefresh={fetchIssues}
             />
           )}
-          {page === "my-reports" && <MyReports issues={issues} go={go} onSelectIssue={setSelectedIssueId} />}
+          {page === "my-reports" && (
+            <MyReports
+              issues={issues}
+              currentUser={currentUser}
+              go={go}
+              onSelectIssue={setSelectedIssueId}
+            />
+          )}
           {page === "verification-requests" && (
             <VerificationRequests issues={issues} go={go} onSelectIssue={setSelectedIssueId} />
           )}

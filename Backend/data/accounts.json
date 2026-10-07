@@ -78,5 +78,15 @@
     "roleTitle": "Public Works (Department Official)",
     "tagline": "Official municipal personnel responsible for resolving reported civic complaints.",
     "avatar": "IR"
+  },
+  {
+    "id": "85aaada2-3335-45d6-9dd2-dedcace7761e",
+    "name": "Shantanu",
+    "email": "shantanu@gmail.com",
+    "password": "shantanu@gmail.com",
+    "role": "citizen",
+    "roleTitle": "Citizen (Community Member)",
+    "tagline": "Active community resident reporting and validating municipal repairs.",
+    "avatar": "SH"
   }
 ]

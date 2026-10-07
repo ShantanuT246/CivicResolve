@@ -162,7 +162,7 @@ interface FullMapProps {
 }
 
 export function FullMap({
-  issues = DEMO_ISSUES,
+  issues = [],
   onMarkerClick,
   verificationCenter,
 }: FullMapProps) {
@@ -170,13 +170,74 @@ export function FullMap({
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
 
+  const addMarkers = useCallback(
+    (map: mapboxgl.Map) => {
+      // Clear old markers
+      markersRef.current.forEach((m) => m.remove());
+      markersRef.current = [];
+
+      // Render actual issue markers
+      issues.forEach((issue) => {
+        if (issue.latitude == null || issue.longitude == null) return;
+
+        const el = document.createElement("div");
+        el.className = "civic-marker";
+        el.style.cssText = `
+          width:34px;height:34px;border-radius:50% 50% 50% 4px;
+          background:${STATUS_COLOR[issue.status] ?? "#2567c3"};
+          border:3px solid white;box-shadow:0 3px 10px rgba(37,55,72,.3);
+          cursor:pointer;transform:rotate(-45deg);
+          display:grid;place-items:center;color:white;
+          font-size:9px;font-weight:700;
+          transition:transform .15s;
+        `;
+        const inner = document.createElement("span");
+        inner.style.transform = "rotate(45deg)";
+        inner.textContent = issue.category?.[0]?.toUpperCase() ?? "•";
+        el.appendChild(inner);
+
+        el.addEventListener("mouseenter", () => { el.style.transform = "rotate(-45deg) scale(1.18)"; });
+        el.addEventListener("mouseleave", () => { el.style.transform = "rotate(-45deg) scale(1)"; });
+
+        const popup = new mapboxgl.Popup({ offset: 18, closeButton: false, maxWidth: "220px" })
+          .setHTML(`
+            <div style="font-family:DM Sans,sans-serif;padding:6px 2px;">
+              <p style="margin:0 0 2px;font-size:9px;text-transform:uppercase;color:#718096;letter-spacing:.06em;">${issue.category ?? ""}</p>
+              <strong style="font-size:13px;line-height:1.3;display:block;margin-bottom:6px;">${issue.title}</strong>
+              <span style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:600;
+                background:${STATUS_COLOR[issue.status] ?? "#2567c3"}20;color:${STATUS_COLOR[issue.status] ?? "#2567c3"};">
+                ${(issue.status || "REPORTED").replace(/_/g, " ")}
+              </span>
+            </div>
+          `);
+
+        const marker = new mapboxgl.Marker(el)
+          .setLngLat([issue.longitude, issue.latitude])
+          .setPopup(popup)
+          .addTo(map);
+
+        if (onMarkerClick) {
+          el.addEventListener("click", () => onMarkerClick(issue));
+        }
+
+        markersRef.current.push(marker);
+      });
+    },
+    [issues, onMarkerClick]
+  );
+
   useEffect(() => {
     if (!containerRef.current) return;
+
+    const initialCenter: [number, number] =
+      issues.length > 0 && issues[0].longitude != null && issues[0].latitude != null
+        ? [issues[0].longitude, issues[0].latitude]
+        : [79.1559, 12.9692];
 
     const map = new mapboxgl.Map({
       container: containerRef.current,
       style: "mapbox://styles/mapbox/light-v11",
-      center: [79.1559, 12.9692],
+      center: initialCenter,
       zoom: 14.5,
       attributionControl: false,
     });
@@ -205,56 +266,19 @@ export function FullMap({
         });
       }
 
-      // ── Issue markers ───────────────────────────────────────────────────
-      const issuesToRender = issues.length ? issues : DEMO_ISSUES;
-      issuesToRender.forEach((issue) => {
-        const el = document.createElement("div");
-        el.className = "civic-marker";
-        el.style.cssText = `
-          width:34px;height:34px;border-radius:50% 50% 50% 4px;
-          background:${STATUS_COLOR[issue.status] ?? "#2567c3"};
-          border:3px solid white;box-shadow:0 3px 10px rgba(37,55,72,.3);
-          cursor:pointer;transform:rotate(-45deg);
-          display:grid;place-items:center;color:white;
-          font-size:9px;font-weight:700;
-          transition:transform .15s;
-        `;
-        const inner = document.createElement("span");
-        inner.style.transform = "rotate(45deg)";
-        inner.textContent = issue.category?.[0]?.toUpperCase() ?? "•";
-        el.appendChild(inner);
-
-        el.addEventListener("mouseenter", () => { el.style.transform = "rotate(-45deg) scale(1.18)"; });
-        el.addEventListener("mouseleave", () => { el.style.transform = "rotate(-45deg) scale(1)"; });
-
-        const popup = new mapboxgl.Popup({ offset: 18, closeButton: false, maxWidth: "220px" })
-          .setHTML(`
-            <div style="font-family:DM Sans,sans-serif;padding:6px 2px;">
-              <p style="margin:0 0 2px;font-size:9px;text-transform:uppercase;color:#718096;letter-spacing:.06em;">${issue.category ?? ""}</p>
-              <strong style="font-size:13px;line-height:1.3;display:block;margin-bottom:6px;">${issue.title}</strong>
-              <span style="display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:600;
-                background:${STATUS_COLOR[issue.status]}20;color:${STATUS_COLOR[issue.status]};">
-                ${issue.status.replace(/_/g, " ")}
-              </span>
-            </div>
-          `);
-
-        const marker = new mapboxgl.Marker(el)
-          .setLngLat([issue.longitude, issue.latitude])
-          .setPopup(popup)
-          .addTo(map);
-
-        if (onMarkerClick) {
-          el.addEventListener("click", () => onMarkerClick(issue));
-        }
-
-        markersRef.current.push(marker);
-      });
+      addMarkers(map);
     });
 
     return () => map.remove();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Update markers reactively when issues prop changes
+  useEffect(() => {
+    if (mapRef.current && mapRef.current.loaded()) {
+      addMarkers(mapRef.current);
+    }
+  }, [addMarkers]);
 
   return (
     <div ref={containerRef} style={{ position: "absolute", inset: 0 }} />
@@ -362,11 +386,3 @@ function createCircleGeoJSON(
   return { type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [coords] } };
 }
 
-/** Fallback demo pins shown when no real API data is available */
-const DEMO_ISSUES: IssueMarker[] = [
-  { id: "demo-1", title: "Streetlight out on Cedar Avenue", status: "DEPARTMENT_CLOSED", category: "Streetlight", latitude: 12.9695, longitude: 79.1552, distance_meters: 82 },
-  { id: "demo-2", title: "Water leak near Oakridge Park", status: "REOPENED", category: "Water Leak", latitude: 12.9705, longitude: 79.1575, distance_meters: 210 },
-  { id: "demo-3", title: "Overflowing bin on Main Road", status: "REPORTED", category: "Bin", latitude: 12.968, longitude: 79.158, distance_meters: 380 },
-  { id: "demo-4", title: "Damaged signboard at crossroads", status: "VERIFIED_RESOLVED", category: "Signboard", latitude: 12.9675, longitude: 79.1540, distance_meters: 450 },
-  { id: "demo-5", title: "Broken footpath near school", status: "IN_PROGRESS", category: "Footpath", latitude: 12.9710, longitude: 79.1560, distance_meters: 290 },
-];
