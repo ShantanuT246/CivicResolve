@@ -7,12 +7,14 @@ import claimRoutes from './routes/claims.js';
 import historyRoutes from './routes/history.js';
 import analyticsRoutes from './routes/analytics.js';
 import demoRoutes from './routes/demo.js';
+import authRoutes from './routes/auth.js';
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
 
+app.use('/api/auth', authRoutes);
 app.use('/api/issues', issueRoutes);
 app.use('/api/issues', verifyRoutes);
 app.use('/api/issues', claimRoutes);

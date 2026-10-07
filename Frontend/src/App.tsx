@@ -46,7 +46,7 @@ export interface UserAccount {
   avatar: string;
 }
 
-export const PRESET_ACCOUNTS: UserAccount[] = [
+const PRESET_ACCOUNTS: UserAccount[] = [
   {
     id: "00000000-0000-0000-0000-000000000001",
     name: "Maya Chen",
@@ -79,7 +79,7 @@ export const PRESET_ACCOUNTS: UserAccount[] = [
 const PHOTO_FALLBACK =
   "https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?auto=format&fit=crop&w=1200&q=80";
 
-export interface IssueItem {
+interface IssueItem {
   id: string;
   title: string;
   category: string;
@@ -98,24 +98,7 @@ export interface IssueItem {
   dispute_count?: number;
 }
 
-const DEFAULT_DEMO_ISSUES: IssueItem[] = [
-  {
-    id: "e6470839-014f-4e5c-8923-9d37bef7f0c3",
-    title: "Streetlight out on Cedar Avenue",
-    category: "Streetlight",
-    status: "DEPARTMENT_CLOSED",
-    latitude: 12.9692,
-    longitude: 79.1559,
-    distance_meters: 310,
-    before_image_url: PHOTO_FALLBACK,
-    after_image_url: "https://images.unsplash.com/photo-1578991624414-276ef23a534f?auto=format&fit=crop&w=1200&q=80",
-    repair_notes: "LED driver and circuit wiring replaced. Confirmed full illumination.",
-    address_text: "Cedar Ave & 8th St",
-    reporter_id: "00000000-0000-0000-0000-000000000001",
-    confirm_count: 1,
-    dispute_count: 0,
-  },
-];
+const DEFAULT_DEMO_ISSUES: IssueItem[] = [];
 
 function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
   const paths: Record<IconName, ReactNode> = {
@@ -162,6 +145,7 @@ function Button({
   onClick,
   disabled,
   className = "",
+  style,
 }: {
   children: ReactNode;
   variant?: "primary" | "secondary" | "danger" | "success";
@@ -169,25 +153,71 @@ function Button({
   onClick?: () => void;
   disabled?: boolean;
   className?: string;
+  style?: React.CSSProperties;
 }) {
   return (
-    <button className={`btn btn-${variant} ${className}`} onClick={onClick} disabled={disabled}>
+    <button className={`btn btn-${variant} ${className}`} onClick={onClick} disabled={disabled} style={style}>
       {icon && <Icon name={icon} size={18} />}
       {children}
     </button>
   );
 }
 
-function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <section className={`card ${className}`}>{children}</section>;
+function Card({
+  children,
+  className = "",
+  style,
+}: {
+  children: ReactNode;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  return <section className={`card ${className}`} style={style}>{children}</section>;
 }
 
 function PageHeader({ eyebrow, title, text, action }: { eyebrow?: string; title: string; text?: string; action?: ReactNode }) {
   return <div className="page-header"><div>{eyebrow && <p className="eyebrow">{eyebrow}</p>}<h1>{title}</h1>{text && <p>{text}</p>}</div>{action}</div>;
 }
 
-function StatCard({ icon, value, label, trend, tone = "blue" }: { icon: IconName; value: string | number; label: string; trend: string; tone?: string }) {
-  return <Card className="stat-card"><div className={`stat-icon tone-${tone}`}><Icon name={icon} /></div><div><p>{label}</p><strong>{value}</strong><small>{trend}</small></div></Card>;
+function StatCard({
+  icon,
+  value,
+  label,
+  trend,
+  tone = "blue",
+  active = false,
+  onClick,
+}: {
+  icon: IconName;
+  value: string | number;
+  label: string;
+  trend: string;
+  tone?: string;
+  active?: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        cursor: onClick ? "pointer" : "default",
+        border: active ? "2px solid #2567c3" : "2px solid transparent",
+        borderRadius: 12,
+        boxShadow: active ? "0 4px 14px rgba(37,103,195,0.2)" : undefined,
+        transform: active ? "translateY(-2px)" : undefined,
+        transition: "all 0.15s ease",
+      }}
+    >
+      <Card className="stat-card">
+        <div className={`stat-icon tone-${tone}`}><Icon name={icon} /></div>
+        <div>
+          <p>{label}</p>
+          <strong>{value}</strong>
+          <small>{trend}</small>
+        </div>
+      </Card>
+    </div>
+  );
 }
 
 function Dashboard({
@@ -201,19 +231,35 @@ function Dashboard({
   go: (p: Page) => void;
   onSelectIssue: (id: string) => void;
 }) {
+  const [filter, setFilter] = useState<"ALL" | "DEPARTMENT_CLOSED" | "VERIFIED_RESOLVED" | "REOPENED">("ALL");
+
   const total = issues.length;
   const pending = issues.filter((i) => i.status === "DEPARTMENT_CLOSED").length;
   const verified = issues.filter((i) => i.status === "VERIFIED_RESOLVED").length;
   const reopened = issues.filter((i) => i.status === "REOPENED").length;
 
+  const filteredIssues = issues.filter((i) => {
+    if (filter === "ALL") return true;
+    return i.status === filter;
+  });
+
   const awaitingVerifyIssue = issues.find((i) => i.status === "DEPARTMENT_CLOSED") || issues[0];
+
+  const filterTitle =
+    filter === "ALL"
+      ? "All community reports"
+      : filter === "DEPARTMENT_CLOSED"
+      ? "Issues awaiting citizen verification"
+      : filter === "VERIFIED_RESOLVED"
+      ? "Verified resolved issues"
+      : "Reopened (failed repairs)";
 
   return (
     <div>
       <PageHeader
         eyebrow={`${currentUser.roleTitle} dashboard`}
         title={`Welcome, ${currentUser.name}`}
-        text="Real-time civic accountability and community verification."
+        text="Click any metric card below to filter the reports list."
         action={
           currentUser.role === "citizen" ? (
             <Button icon="plus" onClick={() => go("report")}>Report an issue</Button>
@@ -223,11 +269,43 @@ function Dashboard({
         }
       />
       <div className="stats-grid">
-        <StatCard icon="file" value={total} label="Active reports" trend="Live Supabase feed" />
-        <StatCard icon="clock" value={pending} label="Awaiting verification" trend="Citizen review window" tone="amber" />
-        <StatCard icon="check" value={verified} label="Verified resolved" trend={`${total > 0 ? Math.round((verified / total) * 100) : 0}% verification rate`} tone="green" />
-        <StatCard icon="alert" value={reopened} label="Reopened issues" trend="Disputed by community" tone="red" />
+        <StatCard
+          icon="file"
+          value={total}
+          label="Active reports"
+          trend="Click to show all"
+          active={filter === "ALL"}
+          onClick={() => setFilter("ALL")}
+        />
+        <StatCard
+          icon="clock"
+          value={pending}
+          label="Awaiting verification"
+          trend="Click to filter"
+          tone="amber"
+          active={filter === "DEPARTMENT_CLOSED"}
+          onClick={() => setFilter("DEPARTMENT_CLOSED")}
+        />
+        <StatCard
+          icon="check"
+          value={verified}
+          label="Verified resolved"
+          trend="Click to filter"
+          tone="green"
+          active={filter === "VERIFIED_RESOLVED"}
+          onClick={() => setFilter("VERIFIED_RESOLVED")}
+        />
+        <StatCard
+          icon="alert"
+          value={reopened}
+          label="Reopened issues"
+          trend="Click to filter"
+          tone="red"
+          active={filter === "REOPENED"}
+          onClick={() => setFilter("REOPENED")}
+        />
       </div>
+
       <div className="dashboard-grid">
         <Card className="map-card">
           <div className="card-heading">
@@ -253,8 +331,8 @@ function Dashboard({
         {awaitingVerifyIssue ? (
           <Card className="verification-card">
             <div className="card-heading">
-              <div><h2>Verification requests</h2><p>Repairs near you need a second look</p></div>
-              <span className="count-badge">{pending || 1}</span>
+              <div><h2>Verification spotlight</h2><p>Official evidence ready for citizen review</p></div>
+              <span className="count-badge">{pending || (issues.length ? 1 : 0)}</span>
             </div>
             <img src={awaitingVerifyIssue.after_image_url || awaitingVerifyIssue.before_image_url || PHOTO_FALLBACK} alt="Evidence awaiting verification" />
             <div className="verification-content">
@@ -269,32 +347,62 @@ function Dashboard({
           </Card>
         ) : null}
       </div>
-      <div className="section-heading">
-        <div><h2>Recent activity</h2><p>Live issues from Supabase database</p></div>
-        <button className="text-button" onClick={() => go("my-reports")}>View all <Icon name="arrow" size={16} /></button>
-      </div>
-      <Card className="activity-list">
-        {issues.map((issue) => (
-          <button
-            key={issue.id}
-            className="activity-row"
-            onClick={() => {
-              onSelectIssue(issue.id);
-              go("issue");
-            }}
-          >
-            <div className="issue-symbol"><Icon name={issue.category.toLowerCase().includes("water") ? "alert" : "pin"} /></div>
-            <div className="activity-main">
-              <span className="issue-id">{issue.id.slice(0, 8)}...</span>
-              <h3>{issue.title}</h3>
-              <p><Icon name="pin" size={14} />{issue.address_text || "Coordinates attached"}</p>
-            </div>
-            <Badge status={issue.status} />
-            <span className="row-time">{issue.confirm_count ?? 0} ✓ / {issue.dispute_count ?? 0} ✗</span>
-            <Icon name="chevron" size={18} />
+
+      <div className="section-heading" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <h2>{filterTitle} ({filteredIssues.length})</h2>
+          <p>{filter !== "ALL" ? `Filtered by ${filter.replace(/_/g, " ")}` : "All reports from database"}</p>
+        </div>
+        {filter !== "ALL" && (
+          <button className="text-button" onClick={() => setFilter("ALL")}>
+            Show all ({total})
           </button>
-        ))}
-      </Card>
+        )}
+      </div>
+
+      {filteredIssues.length > 0 ? (
+        <Card className="activity-list">
+          {filteredIssues.map((issue) => (
+            <button
+              key={issue.id}
+              className="activity-row"
+              onClick={() => {
+                onSelectIssue(issue.id);
+                go("issue");
+              }}
+            >
+              <div className="issue-symbol"><Icon name={issue.category.toLowerCase().includes("water") ? "alert" : "pin"} /></div>
+              <div className="activity-main">
+                <span className="issue-id">{issue.id.slice(0, 8)}...</span>
+                <h3>{issue.title}</h3>
+                <p><Icon name="pin" size={14} />{issue.address_text || "Coordinates attached"}</p>
+              </div>
+              <Badge status={issue.status} />
+              <span className="row-time">{issue.confirm_count ?? 0} ✓ / {issue.dispute_count ?? 0} ✗</span>
+              <Icon name="chevron" size={18} />
+            </button>
+          ))}
+        </Card>
+      ) : (
+        <Card style={{ padding: "40px 20px", textAlign: "center", color: "#64748b" }}>
+          <div style={{ width: 44, height: 44, margin: "0 auto 12px", background: "#f1f5f9", borderRadius: "50%", display: "grid", placeItems: "center" }}>
+            <Icon name="file" size={22} />
+          </div>
+          <h3 style={{ margin: "0 0 6px", color: "#0f172a" }}>
+            {issues.length === 0 ? "Database is clean and ready" : `No issues matching "${filter.replace(/_/g, " ")}"`}
+          </h3>
+          <p style={{ margin: "0 0 16px", fontSize: 13 }}>
+            {issues.length === 0
+              ? "No reports exist currently. Report the first civic issue to start the verification lifecycle!"
+              : "Try clicking 'Active reports' or report a new issue."}
+          </p>
+          {issues.length === 0 ? (
+            <Button icon="plus" onClick={() => go("report")}>Create First Report</Button>
+          ) : (
+            <Button variant="secondary" onClick={() => setFilter("ALL")}>Clear Filter</Button>
+          )}
+        </Card>
+      )}
     </div>
   );
 }
@@ -536,22 +644,37 @@ function IssueDetails({
     loadData();
   }, [loadData]);
 
-  const active = issue || cachedIssue || DEFAULT_DEMO_ISSUES[0];
+  const active = issue || cachedIssue;
 
-  const handleForceExpire = async () => {
+  const handleSimulate = async (outcome?: string) => {
+    if (!active) return;
     try {
       setExpiryLoading(true);
       setDemoMessage("");
-      const res = await api.demoExpire(active.id);
-      setDemoMessage(`Window expired: Transitioned to ${res.new_status} (Confirms: ${res.confirm_count}, Disputes: ${res.dispute_count})`);
+      const res = await api.demoExpire(active.id, outcome);
+      setDemoMessage(res.message || `Simulated outcome: ${res.new_status}`);
       await onRefresh();
       await loadData();
     } catch (err: unknown) {
-      setDemoMessage(`Notice: ${(err as Error)?.message || "Failed to trigger expiry"}`);
+      setDemoMessage(`Notice: ${(err as Error)?.message || "Simulation failed"}`);
     } finally {
       setExpiryLoading(false);
     }
   };
+
+  if (!active) {
+    return (
+      <div className="narrow-page">
+        <button className="back-link" onClick={() => go("dashboard")}>← Back to dashboard</button>
+        <Card className="empty-state-card">
+          <div className="empty-state-icon"><Icon name="file" size={28} /></div>
+          <h2 className="empty-state-title">No report selected</h2>
+          <p className="empty-state-sub">Select an issue from the dashboard or map to view details.</p>
+          <Button onClick={() => go("dashboard")}>Back to dashboard</Button>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -661,25 +784,97 @@ function IssueDetails({
             )}
           </Card>
 
-          <Card>
-            <div className="card-heading">
+          <Card style={{ border: "2px solid #e2e8f0" }}>
+            <div className="card-heading" style={{ marginBottom: 12 }}>
               <div>
-                <h3>⚡ Demo: Force Window Expiry</h3>
-                <p style={{ fontSize: 11, color: "var(--slate-500)", margin: 0 }}>Simulate timer expiration for judges</p>
+                <h3 style={{ display: "flex", alignItems: "center", gap: 6, color: "#1e293b", margin: 0 }}>
+                  ⚡ Judge Demo Simulation Suite
+                </h3>
+                <p style={{ fontSize: 11, color: "var(--slate-500)", margin: "2px 0 0" }}>
+                  Simulate all possible lifecycle outcomes on demand
+                </p>
               </div>
             </div>
-            <Button
-              variant="secondary"
-              className="wide"
-              onClick={handleForceExpire}
-              disabled={expiryLoading || active.status !== "DEPARTMENT_CLOSED"}
-            >
-              {expiryLoading ? "Evaluating votes..." : "⚡ Force Window Expiry"}
-            </Button>
-            <small style={{ color: "var(--slate-500)", display: "block", marginTop: 6, fontSize: 10 }}>
-              {active.status === "DEPARTMENT_CLOSED"
-                ? "Evaluates confirms vs disputes live: 2+ confirms → Resolved, otherwise → Reopened"
-                : "Active only during DEPARTMENT_CLOSED status"}
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {/* Option 1: Verified Resolved */}
+              <button
+                type="button"
+                className="btn btn-success"
+                style={{ width: "100%", justifyContent: "center", fontSize: 12, padding: "8px 10px" }}
+                onClick={() => handleSimulate("VERIFIED_RESOLVED")}
+                disabled={expiryLoading}
+              >
+                <Icon name="check" size={15} />
+                Pass: Verified Resolved (2+ Confirms)
+              </button>
+
+              {/* Option 2: Reopened by Citizen Disputes */}
+              <button
+                type="button"
+                className="btn btn-danger"
+                style={{ width: "100%", justifyContent: "center", fontSize: 12, padding: "8px 10px" }}
+                onClick={() => handleSimulate("REOPENED_DISPUTED")}
+                disabled={expiryLoading}
+              >
+                <Icon name="alert" size={15} />
+                Fail: Auto-Reopen (2 Citizen Disputes)
+              </button>
+
+              {/* Option 3: Reopened by Insufficient Votes */}
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ width: "100%", justifyContent: "center", fontSize: 12, padding: "8px 10px" }}
+                onClick={() => handleSimulate("REOPENED_INSUFFICIENT")}
+                disabled={expiryLoading}
+              >
+                <Icon name="clock" size={15} />
+                Fail: Reopen (Insufficient Confirms &lt; 2)
+              </button>
+
+              {/* Reset controls */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 4 }}>
+                <button
+                  type="button"
+                  style={{
+                    padding: "7px 8px",
+                    background: "#f1f5f9",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: 6,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: "#334155",
+                    cursor: "pointer",
+                  }}
+                  onClick={() => handleSimulate("RESET_PENDING")}
+                  disabled={expiryLoading}
+                  title="Resets issue to DEPARTMENT_CLOSED with a fresh verification countdown"
+                >
+                  Reset: Verification
+                </button>
+                <button
+                  type="button"
+                  style={{
+                    padding: "7px 8px",
+                    background: "#f1f5f9",
+                    border: "1px solid #cbd5e1",
+                    borderRadius: 6,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: "#334155",
+                    cursor: "pointer",
+                  }}
+                  onClick={() => handleSimulate("RESET_REPORTED")}
+                  disabled={expiryLoading}
+                  title="Resets issue back to initial REPORTED status"
+                >
+                  Reset: Reported
+                </button>
+              </div>
+            </div>
+            <small style={{ color: "var(--slate-500)", display: "block", marginTop: 8, fontSize: 10, textAlign: "center" }}>
+              Live updates DB status, timeline history, and vote tallies.
             </small>
           </Card>
 
@@ -718,7 +913,7 @@ function CivicMap({
   go: (p: Page) => void;
   onSelectIssue: (id: string) => void;
 }) {
-  const [activeIssue, setActiveIssue] = useState<IssueItem>(issues[0] || DEFAULT_DEMO_ISSUES[0]);
+  const [activeIssue, setActiveIssue] = useState<IssueItem | null>(issues[0] || null);
 
   return (
     <div className="full-map-page">
@@ -772,7 +967,7 @@ function VerifyPage({
   go,
   onRefresh,
 }: {
-  issue: IssueItem;
+  issue?: IssueItem | null;
   currentUser: UserAccount;
   go: (p: Page) => void;
   onRefresh: () => Promise<void>;
@@ -781,6 +976,20 @@ function VerifyPage({
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ status: string; confirms: number; disputes: number } | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
+
+  if (!issue) {
+    return (
+      <div className="narrow-page">
+        <button className="back-link" onClick={() => go("verification-requests")}>← Back to requests</button>
+        <Card className="empty-state-card">
+          <div className="empty-state-icon"><Icon name="users" size={28} /></div>
+          <h2 className="empty-state-title">No repair selected for verification</h2>
+          <p className="empty-state-sub">Please select an issue currently in the verification window to cast your vote.</p>
+          <Button onClick={() => go("verification-requests")}>Browse verification requests</Button>
+        </Card>
+      </div>
+    );
+  }
 
   const handleVote = async (vote: "CONFIRM" | "DISPUTE") => {
     try {
@@ -1160,25 +1369,39 @@ function Department({
 function MyReports({ issues, go, onSelectIssue }: { issues: IssueItem[]; go: (p: Page) => void; onSelectIssue: (id: string) => void }) {
   return (
     <div>
-      <PageHeader eyebrow="Citizen records" title="My reports" text="Track every issue submitted and its complete verification trail." action={<Button icon="plus" onClick={() => go("report")}>Report an issue</Button>} />
-      <Card className="table-card">
-        <table>
-          <thead>
-            <tr><th>Issue ID</th><th>Category & location</th><th>Current status</th><th>Citizen votes</th><th /></tr>
-          </thead>
-          <tbody>
-            {issues.map((i) => (
-              <tr key={i.id} onClick={() => { onSelectIssue(i.id); go("issue"); }} className="clickable-row">
-                <td><strong>{i.id.slice(0, 8)}</strong></td>
-                <td><strong>{i.category}</strong><span>{i.address_text || "GPS location"}</span></td>
-                <td><Badge status={i.status} /></td>
-                <td>{i.confirm_count ?? 0} ✓ / {i.dispute_count ?? 0} ✗</td>
-                <td><Icon name="chevron" size={16} /></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
+      <PageHeader
+        eyebrow="Citizen records"
+        title="My reports"
+        text="Track every issue submitted and its complete verification trail."
+        action={<Button icon="plus" onClick={() => go("report")}>Report an issue</Button>}
+      />
+      {issues.length > 0 ? (
+        <Card className="table-card">
+          <table>
+            <thead>
+              <tr><th>Issue ID</th><th>Category & location</th><th>Current status</th><th>Citizen votes</th><th /></tr>
+            </thead>
+            <tbody>
+              {issues.map((i) => (
+                <tr key={i.id} onClick={() => { onSelectIssue(i.id); go("issue"); }} className="clickable-row">
+                  <td><strong>{i.id.slice(0, 8)}</strong></td>
+                  <td><strong>{i.category}</strong><span>{i.address_text || "GPS location"}</span></td>
+                  <td><Badge status={i.status} /></td>
+                  <td>{i.confirm_count ?? 0} ✓ / {i.dispute_count ?? 0} ✗</td>
+                  <td><Icon name="chevron" size={16} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      ) : (
+        <Card className="empty-state-card">
+          <div className="empty-state-icon"><Icon name="file" size={28} /></div>
+          <h3 className="empty-state-title">No reports submitted yet</h3>
+          <p className="empty-state-sub">Spot an issue in your neighborhood? Click below to submit a live civic report to the municipality.</p>
+          <Button icon="plus" onClick={() => go("report")}>Report an issue</Button>
+        </Card>
+      )}
     </div>
   );
 }
@@ -1190,181 +1413,593 @@ function VerificationRequests({ issues, go, onSelectIssue }: { issues: IssueItem
   return (
     <div>
       <PageHeader eyebrow="Community verification" title="Help verify local repairs" text="Your local knowledge makes civic resolution accountable." />
-      <div className="request-grid">
-        {displayList.map((issue) => (
-          <Card className="request-card" key={issue.id}>
-            <div className="request-images">
-              <img src={issue.before_image_url || PHOTO_FALLBACK} alt="Before" />
-              <img className="after-photo" src={issue.after_image_url || PHOTO_FALLBACK} alt="After" />
-              <span>Before</span><span>After</span>
+      {displayList.length > 0 ? (
+        <div className="request-grid">
+          {displayList.map((issue) => (
+            <Card className="request-card" key={issue.id}>
+              <div className="request-images">
+                <img src={issue.before_image_url || PHOTO_FALLBACK} alt="Before" />
+                <img className="after-photo" src={issue.after_image_url || PHOTO_FALLBACK} alt="After" />
+                <span>Before</span><span>After</span>
+              </div>
+              <div className="request-body">
+                <Badge status={issue.status} />
+                <h2>{issue.title}</h2>
+                <p><Icon name="pin" size={15} />{issue.address_text || "Coordinates"}</p>
+                <h3>Does this repair appear physically complete?</h3>
+                <Button variant="success" icon="check" onClick={() => { onSelectIssue(issue.id); go("verify"); }}>
+                  Verify or dispute
+                </Button>
+              </div>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <Card className="empty-state-card">
+          <div className="empty-state-icon"><Icon name="check" size={28} /></div>
+          <h3 className="empty-state-title">No repairs awaiting verification</h3>
+          <p className="empty-state-sub">When department technicians submit before/after evidence, local residents can verify repairs here.</p>
+          <Button onClick={() => go("dashboard")}>Back to dashboard</Button>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ── Landing Page (Public Marketing Hero & Portal) ─────────────────────────
+interface LandingPageProps {
+  currentUser?: UserAccount | null;
+  onGetStarted: (role: "citizen" | "department") => void;
+  onGoToDashboard: () => void;
+  onLogout: () => void;
+}
+
+function LandingPage({
+  currentUser,
+  onGetStarted,
+  onGoToDashboard,
+  onLogout,
+}: LandingPageProps) {
+  return (
+    <div className="landing-root">
+      {/* Navbar */}
+      <nav className="landing-nav">
+        <button className="landing-brand" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
+          <span className="landing-brand-icon"><Icon name="check" size={20} /></span>
+          <strong>CivicResolve</strong>
+        </button>
+
+        <div className="landing-nav-links">
+          <span className="landing-nav-badge">
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#34d399", display: "inline-block" }} />
+            Live Supabase + PostGIS
+          </span>
+        </div>
+
+        <div className="landing-nav-cta">
+          {currentUser ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 12px", background: "#ffffff18", borderRadius: 20 }}>
+                <span className="avatar" style={{ width: 24, height: 24, fontSize: 10 }}>{currentUser.avatar}</span>
+                <span style={{ fontSize: 13, color: "white", fontWeight: 600 }}>{currentUser.name}</span>
+              </div>
+              <button className="btn btn-primary" onClick={onGoToDashboard} style={{ fontSize: 13, padding: "0 18px", height: 38 }}>
+                Go to Dashboard →
+              </button>
+              <button className="btn btn-secondary" onClick={onLogout} style={{ fontSize: 13, padding: "0 14px", height: 38, color: "white", background: "#ffffff14", borderColor: "#ffffff2b" }}>
+                Sign out
+              </button>
             </div>
-            <div className="request-body">
-              <Badge status={issue.status} />
-              <h2>{issue.title}</h2>
-              <p><Icon name="pin" size={15} />{issue.address_text || "Coordinates"}</p>
-              <h3>Does this repair appear physically complete?</h3>
-              <Button variant="success" icon="check" onClick={() => { onSelectIssue(issue.id); go("verify"); }}>
-                Verify or dispute
-              </Button>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button className="btn btn-secondary" onClick={() => onGetStarted("citizen")} style={{ fontSize: 13, padding: "0 16px", height: 38, color: "white", background: "#ffffff14", borderColor: "#ffffff2b" }}>
+                Citizen Login
+              </button>
+              <button className="btn btn-primary" onClick={() => onGetStarted("department")} style={{ fontSize: 13, padding: "0 18px", height: 38 }}>
+                Department Portal
+              </button>
             </div>
-          </Card>
-        ))}
+          )}
+        </div>
+      </nav>
+
+      {/* Hero */}
+      <section className="landing-hero">
+        <div className="landing-hero-inner">
+          <div className="landing-badge">
+            <Icon name="check" size={14} /> Community-powered civic accountability
+          </div>
+          <h1 className="landing-hero-title">
+            Repairs shouldn't just
+            <br />
+            <span className="landing-hero-accent">look</span> fixed — they should <span className="landing-hero-accent">be</span> fixed.
+          </h1>
+          <p className="landing-hero-sub">
+            CivicResolve replaces paperwork-only ticket closures with genuine ground verification. Citizens report problems, municipal crews submit photo proof of repair, and the neighborhood confirms it holds up.
+          </p>
+
+          {currentUser ? (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14 }}>
+              <div style={{ padding: "10px 20px", background: "rgba(37, 103, 195, 0.2)", border: "1px solid rgba(101, 169, 255, 0.3)", borderRadius: 12, display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ width: 10, height: 10, borderRadius: "50%", background: currentUser.role === "department" ? "#60a5fa" : "#34d399" }} />
+                <span style={{ fontSize: 14, color: "#e2e8f0" }}>
+                  Welcome back, <strong>{currentUser.name}</strong>. You are active as <strong>{currentUser.roleTitle}</strong>.
+                </span>
+              </div>
+              <div className="landing-hero-actions">
+                <button className="btn btn-primary landing-cta-btn" onClick={onGoToDashboard}>
+                  <Icon name="home" size={18} /> Open {currentUser.roleTitle} Dashboard
+                </button>
+                <button className="btn btn-secondary landing-cta-btn" onClick={() => onGetStarted(currentUser.role === "citizen" ? "department" : "citizen")} style={{ color: "white", borderColor: "#ffffff30", background: "#ffffff12" }}>
+                  Switch Role / Sign in as other user
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="landing-hero-actions">
+              <button className="btn btn-primary landing-cta-btn" onClick={() => onGetStarted("citizen")}>
+                <Icon name="users" size={18} /> Get started as Citizen
+              </button>
+              <button className="btn btn-secondary landing-cta-btn" onClick={() => onGetStarted("department")} style={{ color: "white", borderColor: "#ffffff30", background: "#ffffff12" }}>
+                <Icon name="building" size={18} /> Department login
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Stats strip */}
+        <div className="landing-stats">
+          <div>
+            <strong>2-vote</strong>
+            <span>dispute threshold triggers auto-reopening</span>
+          </div>
+          <div>
+            <strong>100%</strong>
+            <span>evidence-backed repair claims</span>
+          </div>
+          <div>
+            <strong>5-min</strong>
+            <span>verification window countdown</span>
+          </div>
+          <div>
+            <strong>Live</strong>
+            <span>PostGIS geospatial tracking</span>
+          </div>
+        </div>
+      </section>
+
+      {/* How it works */}
+      <section className="landing-how">
+        <p className="eyebrow" style={{ textAlign: "center", color: "#60a5fa" }}>The full lifecycle</p>
+        <h2>How CivicResolve closes the loop</h2>
+        <div className="landing-steps">
+          {[
+            { icon: "pin" as const, step: "01", title: "Citizen reports the issue", desc: "Photo evidence + GPS location submitted directly to Supabase. Real-time logging." },
+            { icon: "building" as const, step: "02", title: "Department claims the repair", desc: "Technician submits before/after photographic proof. Verification window opens." },
+            { icon: "users" as const, step: "03", title: "Community verifies on ground", desc: "Neighbors physically inspect the fix. 2 citizen disputes automatically reopen the issue." },
+            { icon: "check" as const, step: "04", title: "Verified resolved or reopened", desc: "Only true resident confirmation resolves the report. Paperwork alone never closes it." },
+          ].map((s) => (
+            <div className="landing-step" key={s.step}>
+              <div className="landing-step-num">{s.step}</div>
+              <div className="landing-step-icon"><Icon name={s.icon} size={22} /></div>
+              <h3>{s.title}</h3>
+              <p>{s.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Role Portals */}
+      <section className="landing-roles">
+        <p className="eyebrow" style={{ textAlign: "center", color: "#60a5fa" }}>Two perspectives</p>
+        <h2>Choose your portal</h2>
+        <div className="landing-role-grid">
+          <button className="landing-role-card citizen-role" onClick={() => onGetStarted("citizen")}>
+            <div>
+              <div className="role-icon" style={{ background: "#2567c326", color: "#60a5fa" }}>
+                <Icon name="users" size={28} />
+              </div>
+              <p className="eyebrow" style={{ color: "#60a5fa", marginTop: 18 }}>Resident & Community</p>
+              <h2>Citizen Portal</h2>
+              <p>Report civic issues in your neighborhood, track your complaint audit trail, and verify whether repairs by municipal crews actually hold up.</p>
+            </div>
+            <span className="role-cta">Sign in as Citizen <Icon name="arrow" size={16} /></span>
+          </button>
+
+          <button className="landing-role-card department-role" onClick={() => onGetStarted("department")}>
+            <div>
+              <div className="role-icon" style={{ background: "#18704c26", color: "#34d399" }}>
+                <Icon name="building" size={28} />
+              </div>
+              <p className="eyebrow" style={{ color: "#34d399", marginTop: 18 }}>Municipal Authorities</p>
+              <h2>Department Portal</h2>
+              <p>Inspect incoming civic reports, manage work orders, upload before/after photographic repair evidence, and track category durability metrics.</p>
+            </div>
+            <span className="role-cta" style={{ color: "#34d399" }}>Sign in as Department <Icon name="arrow" size={16} /></span>
+          </button>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="landing-footer">
+        <span>© 2026 CivicResolve · Community Accountability Platform</span>
+        <span>Built with Supabase · PostGIS · React · Express</span>
+      </footer>
+    </div>
+  );
+}
+
+// ── Login / Register Page (Email + Password Authentication) ───────────────
+const PRESET_DEMO_ACCOUNTS = [
+  { role: "citizen" as const, email: "maya@civicresolve.in", password: "citizen123", name: "Maya Chen", title: "Citizen (Reporter)" },
+  { role: "citizen" as const, email: "alex@civicresolve.in", password: "citizen123", name: "Alex Rivera", title: "Citizen (Validator)" },
+  { role: "department" as const, email: "john@publicworks.gov", password: "dept1234", name: "John Miller", title: "Department (Technician)" },
+];
+
+function LoginPage({
+  prefillRole,
+  onLogin,
+  onBack,
+}: {
+  prefillRole: "citizen" | "department";
+  onLogin: (user: UserAccount) => void;
+  onBack: () => void;
+}) {
+  const [role, setRole] = useState<"citizen" | "department">(prefillRole);
+  const [mode, setMode] = useState<"signin" | "register">("signin");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPass, setShowPass] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
+
+  const isDept = role === "department";
+  const hints = PRESET_DEMO_ACCOUNTS.filter((c) => c.role === role);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setSuccessMsg("");
+    setLoading(true);
+
+    try {
+      if (mode === "register") {
+        const res = await api.register({
+          email,
+          password,
+          name: name.trim() || undefined,
+          role,
+        });
+        setSuccessMsg(res.message || "Account created! Signing in...");
+        onLogin(res.user as UserAccount);
+      } else {
+        const res = await api.login(email, password, role, name.trim() || undefined);
+        onLogin(res.user as UserAccount);
+      }
+    } catch (err: unknown) {
+      setError((err as Error)?.message || "Authentication failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const quickFill = (hint: typeof PRESET_DEMO_ACCOUNTS[0]) => {
+    setRole(hint.role);
+    setEmail(hint.email);
+    setPassword(hint.password);
+    setName(hint.name);
+    setError("");
+  };
+
+  return (
+    <div className={`auth-page ${isDept ? "department-auth" : ""}`}>
+      {/* Left story panel */}
+      <div className="auth-story">
+        <div>
+          <button
+            onClick={onBack}
+            style={{
+              background: "none",
+              border: "none",
+              color: "inherit",
+              padding: 0,
+              cursor: "pointer",
+              textAlign: "left",
+            }}
+          >
+            <div className="entry-brand light" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span className="landing-brand-icon" style={{ width: 34, height: 34 }}><Icon name="check" size={18} /></span>
+              <strong style={{ fontSize: 20 }}>CivicResolve</strong>
+            </div>
+          </button>
+
+          <h1 style={{ marginTop: 48 }}>
+            {isDept ? "Municipal accountability starts with verified repair claims." : "Your community voice ensures repairs are genuinely complete."}
+          </h1>
+
+          <div className="auth-points">
+            {isDept ? (
+              <>
+                <p>
+                  <span><Icon name="file" size={18} /></span>
+                  <strong>Structured repair claims</strong>
+                  <small>Upload before/after photographic proof for every job order.</small>
+                </p>
+                <p>
+                  <span><Icon name="users" size={18} /></span>
+                  <strong>Community verification loop</strong>
+                  <small>Only citizen validation closes a civic complaint ticket.</small>
+                </p>
+                <p>
+                  <span><Icon name="chart" size={18} /></span>
+                  <strong>Category durability metrics</strong>
+                  <small>Monitor which repair types hold up across municipal wards.</small>
+                </p>
+              </>
+            ) : (
+              <>
+                <p>
+                  <span><Icon name="pin" size={18} /></span>
+                  <strong>Report issues in seconds</strong>
+                  <small>GPS coordinates + camera evidence recorded into PostGIS.</small>
+                </p>
+                <p>
+                  <span><Icon name="check" size={18} /></span>
+                  <strong>Ground-level verification</strong>
+                  <small>2 citizen disputes automatically reopen closed tickets.</small>
+                </p>
+                <p>
+                  <span><Icon name="bell" size={18} /></span>
+                  <strong>Transparent status history</strong>
+                  <small>Complete audit trail from submission to verified resolution.</small>
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+        <small>CivicResolve Platform · Supabase + PostGIS geospatial store</small>
+      </div>
+
+      {/* Right form panel */}
+      <div className="auth-form-wrap">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+          <button onClick={onBack} className="btn btn-secondary" style={{ fontSize: 12, padding: "0 14px", minHeight: 34 }}>
+            ← Back to Overview
+          </button>
+          <div className="role-pill">
+            {isDept ? <Icon name="building" size={14} /> : <Icon name="users" size={14} />}
+            {isDept ? "Department Mode" : "Citizen Mode"}
+          </div>
+        </div>
+
+        {/* Role Switcher Tabs */}
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ fontSize: 11, fontWeight: 700, color: "var(--slate-500)", textTransform: "uppercase", letterSpacing: ".08em", display: "block", marginBottom: 8 }}>
+            Select Portal Role
+          </label>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <button
+              type="button"
+              onClick={() => { setRole("citizen"); setError(""); }}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 8,
+                border: role === "citizen" ? "2px solid #2567c3" : "1px solid var(--slate-300)",
+                background: role === "citizen" ? "#e8f1fc" : "white",
+                color: role === "citizen" ? "#1656a7" : "var(--slate-700)",
+                fontWeight: 700,
+                fontSize: 13,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                cursor: "pointer",
+                transition: "all 0.15s ease",
+              }}
+            >
+              <Icon name="users" size={16} /> Citizen
+            </button>
+            <button
+              type="button"
+              onClick={() => { setRole("department"); setError(""); }}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 8,
+                border: role === "department" ? "2px solid #18704c" : "1px solid var(--slate-300)",
+                background: role === "department" ? "#e2f4eb" : "white",
+                color: role === "department" ? "#18704c" : "var(--slate-700)",
+                fontWeight: 700,
+                fontSize: 13,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                cursor: "pointer",
+                transition: "all 0.15s ease",
+              }}
+            >
+              <Icon name="building" size={16} /> Department
+            </button>
+          </div>
+        </div>
+
+        {/* Sign in vs Register Toggle */}
+        <div style={{ display: "flex", borderBottom: "1px solid var(--slate-200)", marginBottom: 22, gap: 20 }}>
+          <button
+            type="button"
+            onClick={() => { setMode("signin"); setError(""); }}
+            style={{
+              padding: "8px 4px",
+              background: "none",
+              border: "none",
+              borderBottom: mode === "signin" ? "2px solid var(--blue-700)" : "2px solid transparent",
+              color: mode === "signin" ? "var(--navy-950)" : "var(--slate-500)",
+              fontWeight: 700,
+              fontSize: 14,
+              cursor: "pointer",
+            }}
+          >
+            Sign in
+          </button>
+          <button
+            type="button"
+            onClick={() => { setMode("register"); setError(""); }}
+            style={{
+              padding: "8px 4px",
+              background: "none",
+              border: "none",
+              borderBottom: mode === "register" ? "2px solid var(--blue-700)" : "2px solid transparent",
+              color: mode === "register" ? "var(--navy-950)" : "var(--slate-500)",
+              fontWeight: 700,
+              fontSize: 14,
+              cursor: "pointer",
+            }}
+          >
+            Create account
+          </button>
+        </div>
+
+        <h1>{mode === "signin" ? `Sign in as ${isDept ? "Department" : "Citizen"}` : `Register as ${isDept ? "Department Official" : "Citizen"}`}</h1>
+        <p style={{ color: "var(--slate-500)", fontSize: 13, marginBottom: 20 }}>
+          {mode === "signin"
+            ? "Enter your email and password to access your dashboard. Any email is supported."
+            : "Create a new account with your email and password. Your identity will be synced to Supabase."}
+        </p>
+
+        {/* Quick-fill preset accounts */}
+        <div style={{ marginBottom: 20, padding: 12, background: "#f8fafc", borderRadius: 8, border: "1px solid var(--slate-200)" }}>
+          <p style={{ fontSize: 11, color: "var(--slate-500)", margin: "0 0 8px", fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em" }}>
+            Quick fill (Preset Demo Accounts):
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {hints.map((h) => (
+              <button
+                key={h.email}
+                type="button"
+                onClick={() => quickFill(h)}
+                style={{
+                  padding: "5px 12px",
+                  borderRadius: 16,
+                  border: "1px solid var(--slate-300)",
+                  background: "white",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: "var(--slate-700)",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <span>{h.name}</span>
+                <small style={{ color: "var(--slate-500)", fontSize: 10 }}>({h.email.split("@")[0]})</small>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {error && (
+          <div style={{ background: "#fde7e8", color: "#b62d35", padding: "10px 14px", borderRadius: 8, marginBottom: 16, fontSize: 13 }}>
+            {error}
+          </div>
+        )}
+
+        {successMsg && (
+          <div style={{ background: "#e2f4eb", color: "#18704c", padding: "10px 14px", borderRadius: 8, marginBottom: 16, fontSize: 13 }}>
+            {successMsg}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit}>
+          {mode === "register" && (
+            <label className="field-label" style={{ marginBottom: 14 }}>
+              Full name
+              <input
+                id="login-name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={isDept ? "e.g. Officer Miller" : "e.g. Maya Chen"}
+                required
+              />
+            </label>
+          )}
+
+          <label className={`field-label ${error ? "field-error" : ""}`} style={{ marginBottom: 14 }}>
+            Email address
+            <input
+              id="login-email"
+              type="email"
+              value={email}
+              onChange={(e) => { setEmail(e.target.value); setError(""); }}
+              placeholder={isDept ? "yourname@publicworks.gov" : "yourname@civicresolve.in"}
+              required
+              autoComplete="email"
+            />
+          </label>
+
+          <label className={`field-label password-field ${error ? "field-error" : ""}`} style={{ marginBottom: 18 }}>
+            Password
+            <input
+              id="login-password"
+              type={showPass ? "text" : "password"}
+              value={password}
+              onChange={(e) => { setPassword(e.target.value); setError(""); }}
+              placeholder="••••••••"
+              required
+              autoComplete={mode === "signin" ? "current-password" : "new-password"}
+            />
+            <button type="button" onClick={() => setShowPass((v) => !v)}>{showPass ? "Hide" : "Show"}</button>
+          </label>
+
+          <button
+            id="login-submit"
+            type="submit"
+            className="btn btn-primary auth-submit wide"
+            disabled={loading}
+          >
+            {loading ? "Processing…" : mode === "signin" ? "Sign in" : "Create account"} <Icon name="arrow" size={16} />
+          </button>
+
+          <p className="auth-security" style={{ marginTop: 18 }}>
+            <Icon name="check" size={12} /> Live PostGIS database connected · User stored in Supabase
+          </p>
+        </form>
       </div>
     </div>
   );
 }
 
-function AccountLoginScreen({ onLogin }: { onLogin: (user: UserAccount) => void }) {
-  const [customEmail, setCustomEmail] = useState("");
-  const [customName, setCustomName] = useState("");
-  const [customRole, setCustomRole] = useState<"citizen" | "department">("citizen");
-
-  const handleCustomLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!customName || !customEmail) return;
-    onLogin({
-      id: crypto.randomUUID(),
-      name: customName,
-      email: customEmail,
-      role: customRole,
-      roleTitle: customRole === "citizen" ? "Citizen" : "Department Official",
-      tagline: "Custom session user",
-      avatar: customName.slice(0, 2).toUpperCase(),
-    });
-  };
-
-  return (
-    <div className="entry-page" style={{ padding: "40px 20px" }}>
-      <header className="entry-header">
-        <div className="entry-brand">
-          <span><Icon name="check" /></span>
-          <strong>CivicResolve</strong>
-        </div>
-        <span>Accountable civic resolution</span>
-      </header>
-
-      <main className="entry-content" style={{ maxWidth: 880, margin: "0 auto" }}>
-        <p className="eyebrow">Authentication & Identity</p>
-        <h1>Sign in to CivicResolve</h1>
-        <p className="entry-subtitle">
-          Select an account to test different roles across the issue lifecycle.
-        </p>
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16, marginTop: 28, marginBottom: 36 }}>
-          {PRESET_ACCOUNTS.map((acc) => (
-            <div
-              key={acc.id}
-              onClick={() => onLogin(acc)}
-              style={{
-                background: "white",
-                border: "2px solid #e2e8f0",
-                borderRadius: 12,
-                padding: 22,
-                cursor: "pointer",
-                transition: "all 0.15s ease",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-                display: "flex",
-                flexDirection: "column",
-                justifyContent: "space-between",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = "#2567c3";
-                e.currentTarget.style.boxShadow = "0 6px 18px rgba(37,103,195,0.12)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = "#e2e8f0";
-                e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.04)";
-              }}
-            >
-              <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-                  <div style={{ width: 42, height: 42, borderRadius: "50%", background: acc.role === "department" ? "#1656a7" : "#18704c", color: "white", display: "grid", placeItems: "center", fontWeight: 700, fontSize: 15 }}>
-                    {acc.avatar}
-                  </div>
-                  <div>
-                    <strong style={{ fontSize: 16, display: "block" }}>{acc.name}</strong>
-                    <span style={{ fontSize: 12, color: "#718096" }}>{acc.email}</span>
-                  </div>
-                </div>
-                <div style={{ marginBottom: 12 }}>
-                  <span
-                    style={{
-                      display: "inline-block",
-                      padding: "3px 10px",
-                      borderRadius: 20,
-                      fontSize: 11,
-                      fontWeight: 700,
-                      background: acc.role === "department" ? "#e8f1fc" : "#e2f4eb",
-                      color: acc.role === "department" ? "#1656a7" : "#18704c",
-                    }}
-                  >
-                    {acc.roleTitle}
-                  </span>
-                </div>
-                <p style={{ fontSize: 13, color: "#405064", lineHeight: 1.45, margin: "0 0 16px" }}>
-                  {acc.tagline}
-                </p>
-              </div>
-              <button
-                type="button"
-                className="btn btn-primary"
-                style={{ width: "100%", justifyContent: "center" }}
-              >
-                Sign in as {acc.name.split(" ")[0]} <Icon name="arrow" size={16} />
-              </button>
-            </div>
-          ))}
-        </div>
-
-        <Card style={{ padding: 20, maxWidth: 540, margin: "0 auto" }}>
-          <h3 style={{ marginBottom: 8 }}>Or use a custom account</h3>
-          <form onSubmit={handleCustomLogin}>
-            <div className="two-fields">
-              <label className="field-label">
-                Full name
-                <input value={customName} onChange={(e) => setCustomName(e.target.value)} placeholder="Jane Doe" required />
-              </label>
-              <label className="field-label">
-                Email
-                <input type="email" value={customEmail} onChange={(e) => setCustomEmail(e.target.value)} placeholder="jane@example.com" required />
-              </label>
-            </div>
-            <label className="field-label">
-              Role
-              <select value={customRole} onChange={(e) => setCustomRole(e.target.value as "citizen" | "department")} style={{ width: "100%", padding: 10, borderRadius: 6, border: "1px solid var(--slate-300)" }}>
-                <option value="citizen">Citizen (Report & Verify)</option>
-                <option value="department">Department Official (Claim Repairs)</option>
-              </select>
-            </label>
-            <Button className="wide" style={{ marginTop: 12 }}>Sign In with Custom Account</Button>
-          </form>
-        </Card>
-      </main>
-    </div>
-  );
-}
-
-function Shell({ currentUser, onLogout }: { currentUser: UserAccount; onLogout: () => void }) {
+// ── Application Shell ─────────────────────────────────────────────────────
+function Shell({
+  currentUser,
+  onLogout,
+  onGoToLanding,
+}: {
+  currentUser: UserAccount;
+  onLogout: () => void;
+  onGoToLanding: () => void;
+}) {
   const official = currentUser.role === "department";
   const [page, setPage] = useState<Page>(official ? "department" : "dashboard");
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // Issues State
-  const [issues, setIssues] = useState<IssueItem[]>(DEFAULT_DEMO_ISSUES);
-  const [selectedIssueId, setSelectedIssueId] = useState<string>(DEFAULT_DEMO_ISSUES[0].id);
+  const [issues, setIssues] = useState<IssueItem[]>([]);
+  const [selectedIssueId, setSelectedIssueId] = useState<string>("");
+  const [resetting, setResetting] = useState(false);
 
   const fetchIssues = useCallback(async () => {
     try {
-      let data = await api.getNearbyIssues(12.9692, 79.1559, 10000000);
-      if (!data?.issues || data.issues.length === 0) {
-        data = await api.getNearbyIssues(37.7749, -122.4194, 10000000);
-      }
-      if (data?.issues && data.issues.length > 0) {
-        setIssues(data.issues);
-        setSelectedIssueId((prev) => (data.issues.some((i: IssueItem) => i.id === prev) ? prev : data.issues[0].id));
-      }
+      const data = await api.getIssues();
+      const list = Array.isArray(data?.issues) ? data.issues : [];
+      setIssues(list);
+      setSelectedIssueId((prev) => (list.some((i: IssueItem) => i.id === prev) ? prev : (list[0]?.id || "")));
     } catch (e) {
-      console.warn("Using local fallback issues feed:", e);
+      console.warn("Using local issues feed error:", e);
+      setIssues([]);
     }
   }, []);
 
@@ -1372,7 +2007,22 @@ function Shell({ currentUser, onLogout }: { currentUser: UserAccount; onLogout: 
     fetchIssues();
   }, [fetchIssues]);
 
-  const activeIssue = issues.find((i) => i.id === selectedIssueId) || issues[0] || DEFAULT_DEMO_ISSUES[0];
+  const activeIssue = issues.find((i) => i.id === selectedIssueId) || issues[0] || null;
+
+  const handleResetReports = async () => {
+    if (window.confirm("Are you sure you want to reset all reports, claims, and verification records to start completely clean?")) {
+      try {
+        setResetting(true);
+        await api.resetReports();
+        await fetchIssues();
+        alert("All application report data has been cleanly reset to 0!");
+      } catch (e) {
+        alert("Reset failed: " + (e as Error).message);
+      } finally {
+        setResetting(false);
+      }
+    }
+  };
 
   const nav = official
     ? [
@@ -1398,11 +2048,22 @@ function Shell({ currentUser, onLogout }: { currentUser: UserAccount; onLogout: 
   return (
     <div className="app-shell">
       <aside className={`sidebar ${mobileOpen ? "mobile-open" : ""}`}>
-        <div className="brand">
+        <button
+          className="brand"
+          onClick={onGoToLanding}
+          style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", width: "100%", textAlign: "left" }}
+          title="Return to Public Landing Page"
+        >
           <span><Icon name="check" /></span>
-          <div><strong>CivicResolve</strong><small>Community verified</small></div>
-          <button className="mobile-close" onClick={() => setMobileOpen(false)}><Icon name="x" /></button>
-        </div>
+          <div>
+            <strong>CivicResolve</strong>
+            <small>← Overview / Landing</small>
+          </div>
+          <button className="mobile-close" onClick={(e) => { e.stopPropagation(); setMobileOpen(false); }}>
+            <Icon name="x" />
+          </button>
+        </button>
+
         <nav>
           <p>WORKSPACE</p>
           {nav.map(([p, icon, label]) => (
@@ -1411,7 +2072,12 @@ function Shell({ currentUser, onLogout }: { currentUser: UserAccount; onLogout: 
               {label}
             </button>
           ))}
+          <button onClick={onGoToLanding} style={{ marginTop: 8, color: "#60a5fa" }}>
+            <Icon name="home" />
+            Landing Page
+          </button>
         </nav>
+
         <div className="sidebar-trust">
           <Icon name="users" />
           <strong>Community standard</strong>
@@ -1454,6 +2120,27 @@ function Shell({ currentUser, onLogout }: { currentUser: UserAccount; onLogout: 
           <button className="mobile-menu" onClick={() => setMobileOpen(true)}><Icon name="menu" /></button>
           <div className="mobile-brand">CivicResolve</div>
           <div className="top-actions" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button
+              onClick={onGoToLanding}
+              className="btn btn-secondary"
+              style={{ fontSize: 12, padding: "0 12px", height: 34 }}
+              title="View public marketing landing page"
+            >
+              Overview / Landing
+            </button>
+
+            {official && (
+              <button
+                onClick={handleResetReports}
+                disabled={resetting}
+                className="btn btn-secondary"
+                style={{ fontSize: 12, padding: "0 12px", height: 34, color: "#b62d35", borderColor: "#fca5a5" }}
+                title="Wipe database reports back to clean 0 count"
+              >
+                {resetting ? "Resetting…" : "Reset Reports Data"}
+              </button>
+            )}
+
             <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", background: "#f1f5f9", borderRadius: 20 }}>
               <span style={{ width: 8, height: 8, borderRadius: "50%", background: official ? "#2567c3" : "#18704c" }} />
               <span style={{ fontSize: 13, color: "#334155", fontWeight: 600 }}>{currentUser.name} ({currentUser.roleTitle})</span>
@@ -1523,32 +2210,94 @@ function Shell({ currentUser, onLogout }: { currentUser: UserAccount; onLogout: 
   );
 }
 
+// App screen flow: landing → login(role) → shell
+type AppScreen =
+  | { kind: "landing" }
+  | { kind: "login"; role: "citizen" | "department" }
+  | { kind: "shell"; user: UserAccount };
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
     const saved = localStorage.getItem("civic_active_user");
     if (saved) {
       try {
-        return JSON.parse(saved);
-      } catch {
-        return PRESET_ACCOUNTS[0];
+        const user = JSON.parse(saved) as UserAccount;
+        if (user?.id && user?.role) return user;
+      } catch { /* ignore */ }
+    }
+    return null;
+  });
+
+  const [screen, setScreen] = useState<AppScreen>(() => {
+    // If URL has #dashboard and user is logged in, show shell.
+    // Otherwise show landing page so the user always sees the landing page first!
+    if (window.location.hash === "#dashboard") {
+      const saved = localStorage.getItem("civic_active_user");
+      if (saved) {
+        try {
+          const user = JSON.parse(saved) as UserAccount;
+          if (user?.id && user?.role) return { kind: "shell", user };
+        } catch { /* ignore */ }
       }
     }
-    return PRESET_ACCOUNTS[0]; // default to Maya Chen for seamless initial experience
+    return { kind: "landing" };
   });
 
   const handleLogin = (user: UserAccount) => {
-    setCurrentUser(user);
     localStorage.setItem("civic_active_user", JSON.stringify(user));
+    setCurrentUser(user);
+    setScreen({ kind: "shell", user });
+    window.location.hash = "#dashboard";
   };
 
   const handleLogout = () => {
-    setCurrentUser(null);
     localStorage.removeItem("civic_active_user");
+    setCurrentUser(null);
+    setScreen({ kind: "landing" });
+    window.location.hash = "";
   };
 
-  if (!currentUser) {
-    return <AccountLoginScreen onLogin={handleLogin} />;
+  const handleGoToDashboard = () => {
+    if (currentUser) {
+      setScreen({ kind: "shell", user: currentUser });
+      window.location.hash = "#dashboard";
+    } else {
+      setScreen({ kind: "login", role: "citizen" });
+    }
+  };
+
+  const handleGoToLanding = () => {
+    setScreen({ kind: "landing" });
+    window.location.hash = "";
+  };
+
+  if (screen.kind === "landing") {
+    return (
+      <LandingPage
+        currentUser={currentUser}
+        onGetStarted={(role) => setScreen({ kind: "login", role })}
+        onGoToDashboard={handleGoToDashboard}
+        onLogout={handleLogout}
+      />
+    );
   }
 
-  return <Shell currentUser={currentUser} onLogout={handleLogout} />;
+  if (screen.kind === "login") {
+    return (
+      <LoginPage
+        prefillRole={screen.role}
+        onLogin={handleLogin}
+        onBack={handleGoToLanding}
+      />
+    );
+  }
+
+  return (
+    <Shell
+      currentUser={screen.user}
+      onLogout={handleLogout}
+      onGoToLanding={handleGoToLanding}
+    />
+  );
 }
+

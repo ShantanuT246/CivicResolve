@@ -1,0 +1,82 @@
+[
+  {
+    "id": "00000000-0000-0000-0000-000000000001",
+    "name": "Maya Chen",
+    "email": "maya@civicresolve.in",
+    "password": "citizen123",
+    "role": "citizen",
+    "roleTitle": "Citizen (Reporter)",
+    "tagline": "Reports neighborhood issues and tracks accountability.",
+    "avatar": "MC"
+  },
+  {
+    "id": "00000000-0000-0000-0000-000000000003",
+    "name": "Alex Rivera",
+    "email": "alex@civicresolve.in",
+    "password": "citizen123",
+    "role": "citizen",
+    "roleTitle": "Citizen (Neighbor / Validator)",
+    "tagline": "Independent citizen who verifies physical repairs on the ground.",
+    "avatar": "AR"
+  },
+  {
+    "id": "00000000-0000-0000-0000-000000000002",
+    "name": "John Miller",
+    "email": "john@publicworks.gov",
+    "password": "dept1234",
+    "role": "department",
+    "roleTitle": "Public Works (Technician)",
+    "tagline": "Performs fixes and submits before/after evidence claims.",
+    "avatar": "JM"
+  },
+  {
+    "id": "1670fd46-253b-4d21-8e11-4fd34712b981",
+    "name": "Jane Doe",
+    "email": "citizen.user@example.com",
+    "password": "mypassword123",
+    "role": "citizen",
+    "roleTitle": "Citizen (Community Member)",
+    "tagline": "Active community resident reporting and validating municipal repairs.",
+    "avatar": "JD"
+  },
+  {
+    "id": "89a2a0ac-487f-4d16-a629-e1334d7c7aed",
+    "name": "Supervisor Smith",
+    "email": "dept.lead@cityworks.gov",
+    "password": "deptpass456",
+    "role": "department",
+    "roleTitle": "Public Works (Department Official)",
+    "tagline": "Official municipal personnel responsible for resolving reported civic complaints.",
+    "avatar": "SS"
+  },
+  {
+    "id": "b0510b26-5bf7-4001-b93d-1999b62d6e44",
+    "name": "Shan",
+    "email": "shan@gmail.com",
+    "password": "shan@gmail.com",
+    "role": "citizen",
+    "roleTitle": "Citizen (Community Member)",
+    "tagline": "Active community resident reporting and validating municipal repairs.",
+    "avatar": "SH"
+  },
+  {
+    "id": "221d4b3a-7fa0-48bb-8f52-b661963051e4",
+    "name": "E2E Citizen",
+    "email": "citizen.e2e@civicresolve.in",
+    "password": "securePass123",
+    "role": "citizen",
+    "roleTitle": "Citizen (Community Member)",
+    "tagline": "Active community resident reporting and validating municipal repairs.",
+    "avatar": "EC"
+  },
+  {
+    "id": "aa315cb3-bb33-415f-84d5-ec1714e5fdbd",
+    "name": "Inspector Roy",
+    "email": "dept.inspector@civicresolve.in",
+    "password": "pwdDept123",
+    "role": "department",
+    "roleTitle": "Public Works (Department Official)",
+    "tagline": "Official municipal personnel responsible for resolving reported civic complaints.",
+    "avatar": "IR"
+  }
+]
