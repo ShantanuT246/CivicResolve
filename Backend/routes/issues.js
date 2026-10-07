@@ -125,6 +125,31 @@ router.get('/nearby', async (req, res) => {
 });
 
 
+function parseLocation(loc) {
+  if (!loc) return { latitude: 0, longitude: 0 };
+  if (typeof loc === 'object' && Array.isArray(loc.coordinates)) {
+    return { longitude: loc.coordinates[0], latitude: loc.coordinates[1] };
+  }
+  if (typeof loc === 'string') {
+    const match = loc.match(/POINT\s*\(\s*([-\d.]+)\s+([-\d.]+)\s*\)/i);
+    if (match) {
+      return { longitude: parseFloat(match[1]), latitude: parseFloat(match[2]) };
+    }
+    if (loc.length === 50) {
+      try {
+        const buf = Buffer.from(loc, 'hex');
+        return {
+          longitude: buf.readDoubleLE(9),
+          latitude: buf.readDoubleLE(17),
+        };
+      } catch (e) {
+        // ignore
+      }
+    }
+  }
+  return { latitude: 0, longitude: 0 };
+}
+
 // GET /api/issues/:id
 router.get('/:id', async (req, res) => {
   try {
@@ -152,9 +177,12 @@ router.get('/:id', async (req, res) => {
     const dispute_count = (votes || []).filter(v => v.vote === 'DISPUTE').length;
 
     const latestClaim = issue.repair_claims?.[0];
+    const coords = parseLocation(issue.location);
 
     res.json({
       ...issue,
+      latitude: coords.latitude,
+      longitude: coords.longitude,
       after_image_url: latestClaim?.after_image_url || null,
       repair_notes: latestClaim?.repair_notes || null,
       confirm_count,

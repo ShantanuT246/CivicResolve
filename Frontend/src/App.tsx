@@ -616,10 +616,22 @@ function IssueDetails({
           </Card>
           <Card>
             <h2>Location details</h2>
-            <MiniMap height={190} latitude={active.latitude} longitude={active.longitude} markerStatus={active.status} zoom={15} />
+            <MiniMap
+              height={190}
+              latitude={typeof active.latitude === "number" ? active.latitude : 12.9692}
+              longitude={typeof active.longitude === "number" ? active.longitude : 79.1559}
+              markerStatus={active.status}
+              zoom={15}
+            />
             <div className="detail-list">
               <p><span>Address</span><strong>{active.address_text || "Coordinates logged"}</strong></p>
-              <p><span>Coordinates</span><strong>{active.latitude.toFixed(4)}, {active.longitude.toFixed(4)}</strong></p>
+              <p>
+                <span>Coordinates</span>
+                <strong>
+                  {typeof active.latitude === "number" ? active.latitude.toFixed(4) : "—"},{" "}
+                  {typeof active.longitude === "number" ? active.longitude.toFixed(4) : "—"}
+                </strong>
+              </p>
               <p><span>Current status</span><strong>{active.status}</strong></p>
             </div>
           </Card>

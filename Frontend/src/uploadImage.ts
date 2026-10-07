@@ -8,15 +8,42 @@ const supabase = createClient(
   supabaseKey.length > 20 ? supabaseKey : "placeholder-key"
 );
 
-function readFileAsDataUrl(file: File): Promise<string> {
+/**
+ * Resizes and compresses an image file to a clean, lightweight data URL
+ * (capped at max 1280px dimension, 80% JPEG quality, typically ~200KB).
+ */
+function compressImageToDataUrl(file: File, maxDimension = 1280, quality = 0.8): Promise<string> {
   return new Promise((resolve) => {
     const reader = new FileReader();
-    reader.onloadend = () => {
-      if (typeof reader.result === "string") {
-        resolve(reader.result);
-      } else {
-        resolve("https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?auto=format&fit=crop&w=1200&q=80");
-      }
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL("image/jpeg", quality));
+        } else {
+          resolve(e.target?.result as string);
+        }
+      };
+      img.onerror = () => {
+        resolve(e.target?.result as string);
+      };
+      img.src = e.target?.result as string;
     };
     reader.onerror = () => {
       resolve("https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?auto=format&fit=crop&w=1200&q=80");
@@ -46,9 +73,9 @@ export async function uploadImage(file: File): Promise<string> {
       }
     }
   } catch (err) {
-    console.warn("Supabase Storage upload bypassed, preserving uploaded file as Data URL:", err);
+    console.warn("Supabase Storage upload bypassed, compressing file as Data URL:", err);
   }
 
-  // Preserve the exact uploaded photo as a high-fidelity data URL
-  return await readFileAsDataUrl(file);
+  // Preserve the exact uploaded photo as a lightweight, compressed data URL
+  return await compressImageToDataUrl(file);
 }
