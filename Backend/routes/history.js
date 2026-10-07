@@ -1,0 +1,1 @@
+// GET /issues/:id/history
