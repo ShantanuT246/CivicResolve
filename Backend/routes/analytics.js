@@ -9,7 +9,8 @@ router.get('/durability', async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('civic_issues')
-      .select('category, status');
+      .select('category, status')
+      .in('status', ['DEPARTMENT_CLOSED', 'VERIFIED_RESOLVED', 'REOPENED']);
 
     if (error) {
       return res.status(400).json({
@@ -19,8 +20,7 @@ router.get('/durability', async (req, res) => {
 
     const categories = {};
 
-    for (const issue of data) {
-
+    for (const issue of (data || [])) {
       if (!categories[issue.category]) {
         categories[issue.category] = {
           total: 0,
@@ -40,26 +40,21 @@ router.get('/durability', async (req, res) => {
       }
     }
 
-    const result = Object.entries(categories).map(
-      ([category, values]) => {
+    const result = Object.entries(categories).map(([category, values]) => {
+      const durability =
+        values.total > 0
+          ? `${((values.verified / values.total) * 100).toFixed(1)}%`
+          : 'N/A';
 
-        const durability =
-          values.total > 0
-            ? (
-                (values.verified / values.total) *
-                100
-              ).toFixed(1)
-            : '0';
-
-        return {
-          category,
-          total: values.total,
-          verified_resolved: values.verified,
-          reopened: values.reopened,
-          durability_score: `${durability}%`
-        };
-      }
-    );
+      return {
+        category,
+        total: values.total,
+        total_claims: values.total,
+        verified_resolved: values.verified,
+        reopened: values.reopened,
+        durability_score: durability
+      };
+    });
 
     res.json(result);
 

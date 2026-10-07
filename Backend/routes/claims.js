@@ -102,6 +102,7 @@ router.post(
         success: true,
         issue_id: id,
         status: 'DEPARTMENT_CLOSED',
+        new_status: 'DEPARTMENT_CLOSED',
         verification_deadline: deadline
       });
 

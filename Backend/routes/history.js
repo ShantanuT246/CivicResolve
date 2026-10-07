@@ -23,9 +23,16 @@ router.get('/:id/history', async (req, res) => {
       });
     }
 
+    const timeline = (data || []).map(row => ({
+      ...row,
+      status: row.new_status,
+      timestamp: row.changed_at,
+      actor: row.reason
+    }));
+
     res.json({
       issue_id: id,
-      timeline: data
+      timeline
     });
 
   } catch (error) {

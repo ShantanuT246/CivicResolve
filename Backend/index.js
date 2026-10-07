@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import 'dotenv/config';
 import issueRoutes from './routes/issues.js';
 import verifyRoutes from './routes/verify.js';
 import claimRoutes from './routes/claims.js';
@@ -18,4 +19,5 @@ app.use('/api/issues', historyRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/issues', demoRoutes);
 
-app.listen(3001, () => console.log('Backend running on :3001'));
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => console.log(`Backend running on :${PORT}`));
