@@ -17,6 +17,15 @@ export const api = {
       return r.json();
     }),
 
+  // Get a single issue by ID
+  getIssue: (id: string) =>
+    fetch(`${BASE_URL}/issues/${id}`).then(async (r) => {
+      if (!r.ok) {
+        throw new Error(await r.text());
+      }
+      return r.json();
+    }),
+
   // Get issues around a location
   getNearbyIssues: (
     lat: number,

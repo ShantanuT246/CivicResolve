@@ -125,4 +125,46 @@ router.get('/nearby', async (req, res) => {
 });
 
 
+// GET /api/issues/:id
+router.get('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data: issue, error } = await supabase
+      .from('civic_issues')
+      .select(`
+        *,
+        repair_claims (after_image_url, repair_notes, created_at, technician_id)
+      `)
+      .eq('id', id)
+      .single();
+
+    if (error || !issue) {
+      return res.status(404).json({ error: 'Issue not found' });
+    }
+
+    // Get vote counts
+    const { data: votes } = await supabase
+      .from('citizen_verifications')
+      .select('vote')
+      .eq('issue_id', id);
+
+    const confirm_count = (votes || []).filter(v => v.vote === 'CONFIRM').length;
+    const dispute_count = (votes || []).filter(v => v.vote === 'DISPUTE').length;
+
+    const latestClaim = issue.repair_claims?.[0];
+
+    res.json({
+      ...issue,
+      after_image_url: latestClaim?.after_image_url || null,
+      repair_notes: latestClaim?.repair_notes || null,
+      confirm_count,
+      dispute_count,
+    });
+  } catch (error) {
+    console.error('Get issue error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
 export default router;

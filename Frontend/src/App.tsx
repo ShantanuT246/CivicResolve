@@ -12,14 +12,9 @@ type Page =
   | "my-reports"
   | "verification-requests"
   | "department"
-  | "department-issues"
   | "repair-claims"
-  | "disputes"
-  | "durability"
-  | "notifications"
-  | "settings";
+  | "durability";
 
-type Role = "citizen" | "department";
 type IconName =
   | "home"
   | "map"
@@ -38,16 +33,51 @@ type IconName =
   | "users"
   | "menu"
   | "x"
-  | "chevron";
+  | "chevron"
+  | "logOut";
+
+export interface UserAccount {
+  id: string;
+  name: string;
+  email: string;
+  role: "citizen" | "department";
+  roleTitle: string;
+  tagline: string;
+  avatar: string;
+}
+
+export const PRESET_ACCOUNTS: UserAccount[] = [
+  {
+    id: "00000000-0000-0000-0000-000000000001",
+    name: "Maya Chen",
+    email: "maya.chen@community.org",
+    role: "citizen",
+    roleTitle: "Citizen (Reporter)",
+    tagline: "Reports neighborhood issues and tracks accountability.",
+    avatar: "MC",
+  },
+  {
+    id: "00000000-0000-0000-0000-000000000003",
+    name: "Alex Rivera",
+    email: "alex.rivera@community.org",
+    role: "citizen",
+    roleTitle: "Citizen (Neighbor / Validator)",
+    tagline: "Independent citizen who verifies physical repairs on the ground.",
+    avatar: "AR",
+  },
+  {
+    id: "00000000-0000-0000-0000-000000000002",
+    name: "John Miller",
+    email: "john.miller@publicworks.gov",
+    role: "department",
+    roleTitle: "Public Works (Technician)",
+    tagline: "Performs fixes and submits before/after evidence claims.",
+    avatar: "JM",
+  },
+];
 
 const PHOTO_FALLBACK =
   "https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?auto=format&fit=crop&w=1200&q=80";
-
-const CITIZEN_USERS = [
-  { id: "00000000-0000-0000-0000-000000000001", name: "Maya Chen (Reporter)" },
-  { id: "00000000-0000-0000-0000-000000000003", name: "Citizen Alex (Neighbor)" },
-];
-const TECHNICIAN_USER = { id: "00000000-0000-0000-0000-000000000002", name: "Technician John" };
 
 export interface IssueItem {
   id: string;
@@ -61,6 +91,7 @@ export interface IssueItem {
   after_image_url?: string;
   repair_notes?: string;
   address_text?: string;
+  reporter_id?: string;
   claimed_at?: string;
   verification_deadline?: string;
   confirm_count?: number;
@@ -80,33 +111,8 @@ const DEFAULT_DEMO_ISSUES: IssueItem[] = [
     after_image_url: "https://images.unsplash.com/photo-1578991624414-276ef23a534f?auto=format&fit=crop&w=1200&q=80",
     repair_notes: "LED driver and circuit wiring replaced. Confirmed full illumination.",
     address_text: "Cedar Ave & 8th St",
+    reporter_id: "00000000-0000-0000-0000-000000000001",
     confirm_count: 1,
-    dispute_count: 0,
-  },
-  {
-    id: "c4b8e221-1200-4b2a-9921-112233445566",
-    title: "Water leak near Oakridge Park",
-    category: "Water leak",
-    status: "REOPENED",
-    latitude: 12.9730,
-    longitude: 79.1585,
-    distance_meters: 650,
-    before_image_url: PHOTO_FALLBACK,
-    address_text: "Oakridge Park, North Gate",
-    confirm_count: 0,
-    dispute_count: 2,
-  },
-  {
-    id: "a1b2c3d4-e5f6-7a8b-9c0d-112233445577",
-    title: "Damaged pedestrian crosswalk sign",
-    category: "Signboard",
-    status: "VERIFIED_RESOLVED",
-    latitude: 12.9650,
-    longitude: 79.1520,
-    distance_meters: 920,
-    before_image_url: PHOTO_FALLBACK,
-    address_text: "14 Market Street",
-    confirm_count: 3,
     dispute_count: 0,
   },
 ];
@@ -131,6 +137,7 @@ function Icon({ name, size = 20 }: { name: IconName; size?: number }) {
     menu: <path d="M4 7h16M4 12h16M4 17h16" />,
     x: <path d="m6 6 12 12M18 6 6 18" />,
     chevron: <path d="m9 18 6-6-6-6" />,
+    logOut: <><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></>,
   };
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
@@ -141,10 +148,6 @@ const statusMap: Record<string, { label: string; color: string }> = {
   DEPARTMENT_CLOSED: { label: "Pending verification", color: "amber" },
   VERIFIED_RESOLVED: { label: "Verified resolved", color: "green" },
   REOPENED: { label: "Reopened", color: "red" },
-  pending: { label: "Pending verification", color: "amber" },
-  verified: { label: "Verified resolved", color: "green" },
-  reopened: { label: "Reopened", color: "red" },
-  reported: { label: "Reported", color: "blue" },
 };
 
 function Badge({ status }: { status: string }) {
@@ -189,10 +192,12 @@ function StatCard({ icon, value, label, trend, tone = "blue" }: { icon: IconName
 
 function Dashboard({
   issues,
+  currentUser,
   go,
   onSelectIssue,
 }: {
   issues: IssueItem[];
+  currentUser: UserAccount;
   go: (p: Page) => void;
   onSelectIssue: (id: string) => void;
 }) {
@@ -206,14 +211,20 @@ function Dashboard({
   return (
     <div>
       <PageHeader
-        eyebrow="Citizen dashboard"
-        title="Good morning, Maya"
-        text="Here’s what’s happening in your community today."
-        action={<Button icon="plus" onClick={() => go("report")}>Report an issue</Button>}
+        eyebrow={`${currentUser.roleTitle} dashboard`}
+        title={`Welcome, ${currentUser.name}`}
+        text="Real-time civic accountability and community verification."
+        action={
+          currentUser.role === "citizen" ? (
+            <Button icon="plus" onClick={() => go("report")}>Report an issue</Button>
+          ) : (
+            <Button icon="plus" onClick={() => go("repair-claims")}>Submit repair claim</Button>
+          )
+        }
       />
       <div className="stats-grid">
-        <StatCard icon="file" value={total} label="Active reports" trend="Live community feed" />
-        <StatCard icon="clock" value={pending} label="Awaiting verification" trend="Ready for citizen review" tone="amber" />
+        <StatCard icon="file" value={total} label="Active reports" trend="Live Supabase feed" />
+        <StatCard icon="clock" value={pending} label="Awaiting verification" trend="Citizen review window" tone="amber" />
         <StatCard icon="check" value={verified} label="Verified resolved" trend={`${total > 0 ? Math.round((verified / total) * 100) : 0}% verification rate`} tone="green" />
         <StatCard icon="alert" value={reopened} label="Reopened issues" trend="Disputed by community" tone="red" />
       </div>
@@ -295,7 +306,7 @@ function ReportIssue({
   onSelectIssue,
 }: {
   go: (p: Page) => void;
-  currentUser: { id: string; name: string };
+  currentUser: UserAccount;
   onRefresh: () => Promise<void>;
   onSelectIssue: (id: string) => void;
 }) {
@@ -306,7 +317,7 @@ function ReportIssue({
   const [lng, setLng] = useState(79.1559);
   const [description, setDescription] = useState("Streetlight has been flickering and completely out near pedestrian crosswalk.");
   const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string>(PHOTO_FALLBACK);
+  const [preview, setPreview] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -316,7 +327,8 @@ function ReportIssue({
     if (e.target.files?.[0]) {
       const selected = e.target.files[0];
       setFile(selected);
-      setPreview(URL.createObjectURL(selected));
+      const objectUrl = URL.createObjectURL(selected);
+      setPreview(objectUrl);
     }
   };
 
@@ -405,19 +417,24 @@ function ReportIssue({
         {step === 3 && (
           <>
             <p className="eyebrow">Step 3 of 4</p>
-            <h2>Add clear evidence</h2>
-            <p className="form-intro">Photos make your report easier to assess and verify.</p>
+            <h2>Upload photographic proof</h2>
+            <p className="form-intro">Clear photos establish an immutable record for community verification.</p>
             <label className="upload-zone" style={{ cursor: "pointer", display: "block" }}>
               <input type="file" accept="image/*" style={{ display: "none" }} onChange={handleFileChange} />
               {preview ? (
-                <img src={preview} alt="Upload preview" style={{ height: 140, objectFit: "cover", borderRadius: 8, margin: "0 auto 10px", display: "block" }} />
+                <div style={{ textAlign: "center" }}>
+                  <img src={preview} alt="Upload preview" style={{ maxHeight: 180, maxWidth: "100%", objectFit: "contain", borderRadius: 8, margin: "0 auto 10px", display: "block" }} />
+                  <span style={{ fontSize: 12, color: "var(--blue-600)", fontWeight: 600 }}>Click to change photo</span>
+                </div>
               ) : (
-                <span><Icon name="camera" size={26} /></span>
+                <>
+                  <span><Icon name="camera" size={28} /></span>
+                  <strong>Choose a photo from your device</strong>
+                  <small>JPG or PNG. Will be saved to your issue record.</small>
+                </>
               )}
-              <strong>{file ? file.name : "Click to upload photographic evidence"}</strong>
-              <small>Uploads directly to Supabase storage bucket</small>
             </label>
-            <label className="field-label">
+            <label className="field-label" style={{ marginTop: 14 }}>
               Describe the issue
               <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
             </label>
@@ -428,11 +445,17 @@ function ReportIssue({
             <p className="eyebrow">Step 4 of 4</p>
             <h2>Review your report</h2>
             <p className="form-intro">Make sure these details are accurate before submitting.</p>
+            {preview && (
+              <div style={{ marginBottom: 16, textAlign: "center" }}>
+                <img src={preview} alt="Evidence to submit" style={{ maxHeight: 140, borderRadius: 8 }} />
+                <span style={{ display: "block", fontSize: 11, color: "var(--slate-500)", marginTop: 4 }}>Uploaded evidence photo</span>
+              </div>
+            )}
             <div className="review-box">
               <div><span>Category</span><strong>{category}</strong></div>
               <div><span>Location</span><strong>{address}</strong></div>
               <div><span>Coordinates</span><strong>{lat.toFixed(4)}, {lng.toFixed(4)}</strong></div>
-              <div><span>Reporter</span><strong>{currentUser.name}</strong></div>
+              <div><span>Reporter</span><strong>{currentUser.name} ({currentUser.roleTitle})</strong></div>
               <div><span>Description</span><strong>{description}</strong></div>
             </div>
             <div className="trust-note">
@@ -471,41 +494,58 @@ function Lifecycle({ status }: { status: string }) {
 }
 
 function IssueDetails({
-  issue,
+  issueId,
+  cachedIssue,
+  currentUser,
   go,
   onRefresh,
 }: {
-  issue: IssueItem;
+  issueId: string;
+  cachedIssue?: IssueItem;
+  currentUser: UserAccount;
   go: (p: Page) => void;
   onRefresh: () => Promise<void>;
 }) {
+  const [issue, setIssue] = useState<IssueItem | null>(cachedIssue || null);
   const [timeline, setTimeline] = useState<Array<{ status?: string; new_status?: string; timestamp?: string; changed_at?: string; actor?: string; reason?: string }>>([]);
   const [expiryLoading, setExpiryLoading] = useState(false);
   const [demoMessage, setDemoMessage] = useState("");
 
-  const loadHistory = useCallback(async () => {
+  const loadData = useCallback(async () => {
     try {
-      const res = await api.getHistory(issue.id);
-      if (res?.timeline) {
-        setTimeline(res.timeline);
+      const issueData = await api.getIssue(issueId);
+      if (issueData?.id) {
+        setIssue(issueData);
+      }
+    } catch {
+      // fallback to cachedIssue
+      if (cachedIssue) setIssue(cachedIssue);
+    }
+
+    try {
+      const histData = await api.getHistory(issueId);
+      if (histData?.timeline) {
+        setTimeline(histData.timeline);
       }
     } catch (e) {
       console.warn("Could not load history from API:", e);
     }
-  }, [issue.id]);
+  }, [issueId, cachedIssue]);
 
   useEffect(() => {
-    loadHistory();
-  }, [loadHistory]);
+    loadData();
+  }, [loadData]);
+
+  const active = issue || cachedIssue || DEFAULT_DEMO_ISSUES[0];
 
   const handleForceExpire = async () => {
     try {
       setExpiryLoading(true);
       setDemoMessage("");
-      const res = await api.demoExpire(issue.id);
+      const res = await api.demoExpire(active.id);
       setDemoMessage(`Window expired: Transitioned to ${res.new_status} (Confirms: ${res.confirm_count}, Disputes: ${res.dispute_count})`);
       await onRefresh();
-      await loadHistory();
+      await loadData();
     } catch (err: unknown) {
       setDemoMessage(`Notice: ${(err as Error)?.message || "Failed to trigger expiry"}`);
     } finally {
@@ -517,10 +557,10 @@ function IssueDetails({
     <div>
       <button className="back-link" onClick={() => go("dashboard")}>← Back to dashboard</button>
       <PageHeader
-        eyebrow={`Issue ${issue.id.slice(0, 8)} · ${issue.category}`}
-        title={issue.title}
-        text={issue.address_text || "Location recorded via GPS"}
-        action={<Badge status={issue.status} />}
+        eyebrow={`Issue ${active.id.slice(0, 8)} · ${active.category}`}
+        title={active.title}
+        text={active.address_text || "Location recorded via GPS"}
+        action={<Badge status={active.status} />}
       />
       <Card className="lifecycle-card">
         <div className="card-heading">
@@ -528,9 +568,9 @@ function IssueDetails({
             <h2>Resolution lifecycle</h2>
             <p>Department closed is NOT the same as citizen verified</p>
           </div>
-          <span className="deadline"><Icon name="clock" size={16} />{issue.status === "DEPARTMENT_CLOSED" ? "Verification window active" : issue.status.replace(/_/g, " ")}</span>
+          <span className="deadline"><Icon name="clock" size={16} />{active.status === "DEPARTMENT_CLOSED" ? "Verification window active" : active.status.replace(/_/g, " ")}</span>
         </div>
-        <Lifecycle status={issue.status} />
+        <Lifecycle status={active.status} />
       </Card>
 
       {demoMessage && (
@@ -544,43 +584,43 @@ function IssueDetails({
           <Card>
             <div className="card-heading">
               <div>
-                <h2>Repair evidence comparison</h2>
-                <p>Official before and after photo record</p>
+                <h2>Evidence comparison</h2>
+                <p>Before and after photo record</p>
               </div>
-              <span className="evidence-check"><Icon name="check" size={16} />Official evidence</span>
+              <span className="evidence-check"><Icon name="check" size={16} />Evidence record</span>
             </div>
             <div className="photo-compare">
               <figure>
-                <img src={issue.before_image_url || PHOTO_FALLBACK} alt="Before repair" />
+                <img src={active.before_image_url || PHOTO_FALLBACK} alt="Before repair" />
                 <figcaption><span>BEFORE</span>Citizen report photo</figcaption>
               </figure>
               <figure>
-                <img className="after-photo" src={issue.after_image_url || PHOTO_FALLBACK} alt="After repair" />
-                <figcaption><span>AFTER</span>{issue.after_image_url ? "Official department evidence" : "Awaiting repair submission"}</figcaption>
+                <img className="after-photo" src={active.after_image_url || PHOTO_FALLBACK} alt="After repair" />
+                <figcaption><span>AFTER</span>{active.after_image_url ? "Official department evidence" : "Awaiting repair claim"}</figcaption>
               </figure>
             </div>
             <div className="repair-details">
               <div>
                 <span>Repair notes</span>
-                <strong>{issue.repair_notes || (issue.status === "REPORTED" ? "Work order pending technician dispatch" : "Repairs claimed by department")}</strong>
+                <strong>{active.repair_notes || (active.status === "REPORTED" ? "Work order pending technician dispatch" : "Repair claimed by department")}</strong>
               </div>
               <div>
                 <span>Category</span>
-                <strong>{issue.category}</strong>
+                <strong>{active.category}</strong>
               </div>
               <div>
                 <span>Issue ID</span>
-                <strong>{issue.id}</strong>
+                <strong>{active.id}</strong>
               </div>
             </div>
           </Card>
           <Card>
             <h2>Location details</h2>
-            <MiniMap height={190} latitude={issue.latitude} longitude={issue.longitude} markerStatus={issue.status} zoom={15} />
+            <MiniMap height={190} latitude={active.latitude} longitude={active.longitude} markerStatus={active.status} zoom={15} />
             <div className="detail-list">
-              <p><span>Address</span><strong>{issue.address_text || "Coordinates logged"}</strong></p>
-              <p><span>Coordinates</span><strong>{issue.latitude.toFixed(4)}, {issue.longitude.toFixed(4)}</strong></p>
-              <p><span>Current status</span><strong>{issue.status}</strong></p>
+              <p><span>Address</span><strong>{active.address_text || "Coordinates logged"}</strong></p>
+              <p><span>Coordinates</span><strong>{active.latitude.toFixed(4)}, {active.longitude.toFixed(4)}</strong></p>
+              <p><span>Current status</span><strong>{active.status}</strong></p>
             </div>
           </Card>
         </div>
@@ -590,42 +630,42 @@ function IssueDetails({
             <h2>Citizen verification status</h2>
             <p>Community votes dictate whether this issue is genuinely resolved.</p>
             <div className="verification-numbers">
-              <div><strong>{issue.confirm_count ?? 0}</strong><span>Confirmed fixed</span></div>
-              <div><strong>{issue.dispute_count ?? 0}</strong><span>Disputed</span></div>
+              <div><strong>{active.confirm_count ?? 0}</strong><span>Confirmed fixed</span></div>
+              <div><strong>{active.dispute_count ?? 0}</strong><span>Disputed</span></div>
             </div>
-            {issue.status === "DEPARTMENT_CLOSED" ? (
+            {active.status === "DEPARTMENT_CLOSED" ? (
               <>
                 <Button variant="success" icon="check" onClick={() => go("verify")} className="wide">
                   Verify or dispute repair
                 </Button>
-                <small>Requires community verification. Dispute threshold: 2 votes.</small>
+                <small>Requires community verification. 2 disputes auto-reopens.</small>
               </>
-            ) : issue.status === "REPORTED" ? (
+            ) : active.status === "REPORTED" && currentUser.role === "department" ? (
               <Button variant="secondary" onClick={() => go("repair-claims")} className="wide">
                 Submit repair claim (Department)
               </Button>
             ) : (
-              <Badge status={issue.status} />
+              <Badge status={active.status} />
             )}
           </Card>
 
           <Card>
             <div className="card-heading">
               <div>
-                <h3>⚡ Judge Demo Helper</h3>
-                <p style={{ fontSize: 11, color: "var(--slate-500)", margin: 0 }}>Simulate verification window expiration</p>
+                <h3>⚡ Demo: Force Window Expiry</h3>
+                <p style={{ fontSize: 11, color: "var(--slate-500)", margin: 0 }}>Simulate timer expiration for judges</p>
               </div>
             </div>
             <Button
               variant="secondary"
               className="wide"
               onClick={handleForceExpire}
-              disabled={expiryLoading || issue.status !== "DEPARTMENT_CLOSED"}
+              disabled={expiryLoading || active.status !== "DEPARTMENT_CLOSED"}
             >
               {expiryLoading ? "Evaluating votes..." : "⚡ Force Window Expiry"}
             </Button>
             <small style={{ color: "var(--slate-500)", display: "block", marginTop: 6, fontSize: 10 }}>
-              {issue.status === "DEPARTMENT_CLOSED"
+              {active.status === "DEPARTMENT_CLOSED"
                 ? "Evaluates confirms vs disputes live: 2+ confirms → Resolved, otherwise → Reopened"
                 : "Active only during DEPARTMENT_CLOSED status"}
             </small>
@@ -645,7 +685,7 @@ function IssueDetails({
               ) : (
                 <p>
                   <i className="blue" />
-                  <strong>{issue.status}</strong>
+                  <strong>{active.status}</strong>
                   <span>Recorded in database</span>
                 </p>
               )}
@@ -721,7 +761,7 @@ function VerifyPage({
   onRefresh,
 }: {
   issue: IssueItem;
-  currentUser: { id: string; name: string };
+  currentUser: UserAccount;
   go: (p: Page) => void;
   onRefresh: () => Promise<void>;
 }) {
@@ -753,7 +793,7 @@ function VerifyPage({
         const parsed = JSON.parse(msg);
         if (parsed.error) msg = parsed.error;
       } catch {
-        // use plain text msg
+        // use plain msg
       }
       setErrorMessage(msg);
     } finally {
@@ -770,7 +810,10 @@ function VerifyPage({
         <p>
           Your vote has been saved. Current status: <strong>{result.status}</strong> ({result.confirms} Confirmed, {result.disputes} Disputed).
         </p>
-        <Button onClick={() => go("dashboard")}>Return to dashboard</Button>
+        <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 20 }}>
+          <Button onClick={() => go("issue")}>View updated issue</Button>
+          <Button variant="secondary" onClick={() => go("dashboard")}>Return to dashboard</Button>
+        </div>
       </div>
     );
   }
@@ -785,7 +828,7 @@ function VerifyPage({
       <div className="verification-rule">
         <Icon name="pin" />
         <div>
-          <strong>You are verifying as {currentUser.name}</strong>
+          <strong>Verifying as: {currentUser.name} ({currentUser.roleTitle})</strong>
           <p>One vote per verification cycle. Reporter isolation is enforced.</p>
         </div>
         <span>Active</span>
@@ -856,16 +899,21 @@ function RepairClaims({
 }: {
   issues: IssueItem[];
   selectedIssueId: string;
-  currentUser: { id: string; name: string };
+  currentUser: UserAccount;
   go: (p: Page) => void;
   onRefresh: () => Promise<void>;
   onSelectIssue: (id: string) => void;
 }) {
-  const [issueId, setIssueId] = useState(selectedIssueId || issues[0]?.id || "");
+  const claimable = issues.filter((i) => i.status === "REPORTED" || i.status === "IN_PROGRESS" || i.status === "REOPENED");
+  const defaultId = claimable.some((i) => i.id === selectedIssueId)
+    ? selectedIssueId
+    : claimable[0]?.id || issues[0]?.id || "";
+
+  const [issueId, setIssueId] = useState(defaultId);
   const [notes, setNotes] = useState("Replaced failed parts, tested voltage, and verified full illumination.");
   const [workOrder, setWorkOrder] = useState("WO-2025-1198");
   const [afterFile, setAfterFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string>("https://images.unsplash.com/photo-1578991624414-276ef23a534f?auto=format&fit=crop&w=1200&q=80");
+  const [preview, setPreview] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -881,7 +929,7 @@ function RepairClaims({
       setLoading(true);
       setErrorMsg("");
 
-      let afterImageUrl = preview;
+      let afterImageUrl = "https://images.unsplash.com/photo-1578991624414-276ef23a534f?auto=format&fit=crop&w=1200&q=80";
       if (afterFile) {
         afterImageUrl = await uploadImage(afterFile);
       }
@@ -921,7 +969,7 @@ function RepairClaims({
       <Card className="form-card">
         <div className="two-fields">
           <label className="field-label">
-            Target issue
+            Target issue to claim as repaired
             <select value={issueId} onChange={(e) => setIssueId(e.target.value)} style={{ width: "100%", padding: 10, borderRadius: 6, border: "1px solid var(--slate-300)" }}>
               {issues.map((i) => (
                 <option key={i.id} value={i.id}>
@@ -948,15 +996,18 @@ function RepairClaims({
         <div className="evidence-upload-grid">
           <label className="upload-zone" style={{ cursor: "pointer", display: "block" }}>
             <input type="file" accept="image/*" style={{ display: "none" }} onChange={handleFile} />
-            {preview && <img src={preview} alt="After evidence" style={{ height: 110, objectFit: "cover", borderRadius: 6, margin: "0 auto 8px", display: "block" }} />}
-            <span><Icon name="camera" /></span>
+            {preview ? (
+              <img src={preview} alt="After evidence preview" style={{ height: 130, objectFit: "contain", borderRadius: 6, margin: "0 auto 8px", display: "block" }} />
+            ) : (
+              <span><Icon name="camera" size={26} /></span>
+            )}
             <strong>{afterFile ? afterFile.name : "Upload after-repair photo"}</strong>
             <small>Direct to Supabase Storage</small>
           </label>
         </div>
         <div className="form-actions">
           <Button variant="secondary" onClick={() => go("dashboard")}>Cancel</Button>
-          <Button icon="check" onClick={handleSubmit} disabled={loading}>
+          <Button icon="check" onClick={handleSubmit} disabled={loading || !issueId}>
             {loading ? "Submitting claim..." : "Submit repair claim"}
           </Button>
         </div>
@@ -1151,19 +1202,144 @@ function VerificationRequests({ issues, go, onSelectIssue }: { issues: IssueItem
   );
 }
 
-function Shell({ role, onChangeRole }: { role: Role; onChangeRole: () => void }) {
-  const official = role === "department";
+function AccountLoginScreen({ onLogin }: { onLogin: (user: UserAccount) => void }) {
+  const [customEmail, setCustomEmail] = useState("");
+  const [customName, setCustomName] = useState("");
+  const [customRole, setCustomRole] = useState<"citizen" | "department">("citizen");
+
+  const handleCustomLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customName || !customEmail) return;
+    onLogin({
+      id: crypto.randomUUID(),
+      name: customName,
+      email: customEmail,
+      role: customRole,
+      roleTitle: customRole === "citizen" ? "Citizen" : "Department Official",
+      tagline: "Custom session user",
+      avatar: customName.slice(0, 2).toUpperCase(),
+    });
+  };
+
+  return (
+    <div className="entry-page" style={{ padding: "40px 20px" }}>
+      <header className="entry-header">
+        <div className="entry-brand">
+          <span><Icon name="check" /></span>
+          <strong>CivicResolve</strong>
+        </div>
+        <span>Accountable civic resolution</span>
+      </header>
+
+      <main className="entry-content" style={{ maxWidth: 880, margin: "0 auto" }}>
+        <p className="eyebrow">Authentication & Identity</p>
+        <h1>Sign in to CivicResolve</h1>
+        <p className="entry-subtitle">
+          Select an account to test different roles across the issue lifecycle.
+        </p>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16, marginTop: 28, marginBottom: 36 }}>
+          {PRESET_ACCOUNTS.map((acc) => (
+            <div
+              key={acc.id}
+              onClick={() => onLogin(acc)}
+              style={{
+                background: "white",
+                border: "2px solid #e2e8f0",
+                borderRadius: 12,
+                padding: 22,
+                cursor: "pointer",
+                transition: "all 0.15s ease",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "space-between",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "#2567c3";
+                e.currentTarget.style.boxShadow = "0 6px 18px rgba(37,103,195,0.12)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "#e2e8f0";
+                e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.04)";
+              }}
+            >
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+                  <div style={{ width: 42, height: 42, borderRadius: "50%", background: acc.role === "department" ? "#1656a7" : "#18704c", color: "white", display: "grid", placeItems: "center", fontWeight: 700, fontSize: 15 }}>
+                    {acc.avatar}
+                  </div>
+                  <div>
+                    <strong style={{ fontSize: 16, display: "block" }}>{acc.name}</strong>
+                    <span style={{ fontSize: 12, color: "#718096" }}>{acc.email}</span>
+                  </div>
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <span
+                    style={{
+                      display: "inline-block",
+                      padding: "3px 10px",
+                      borderRadius: 20,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      background: acc.role === "department" ? "#e8f1fc" : "#e2f4eb",
+                      color: acc.role === "department" ? "#1656a7" : "#18704c",
+                    }}
+                  >
+                    {acc.roleTitle}
+                  </span>
+                </div>
+                <p style={{ fontSize: 13, color: "#405064", lineHeight: 1.45, margin: "0 0 16px" }}>
+                  {acc.tagline}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ width: "100%", justifyContent: "center" }}
+              >
+                Sign in as {acc.name.split(" ")[0]} <Icon name="arrow" size={16} />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <Card style={{ padding: 20, maxWidth: 540, margin: "0 auto" }}>
+          <h3 style={{ marginBottom: 8 }}>Or use a custom account</h3>
+          <form onSubmit={handleCustomLogin}>
+            <div className="two-fields">
+              <label className="field-label">
+                Full name
+                <input value={customName} onChange={(e) => setCustomName(e.target.value)} placeholder="Jane Doe" required />
+              </label>
+              <label className="field-label">
+                Email
+                <input type="email" value={customEmail} onChange={(e) => setCustomEmail(e.target.value)} placeholder="jane@example.com" required />
+              </label>
+            </div>
+            <label className="field-label">
+              Role
+              <select value={customRole} onChange={(e) => setCustomRole(e.target.value as "citizen" | "department")} style={{ width: "100%", padding: 10, borderRadius: 6, border: "1px solid var(--slate-300)" }}>
+                <option value="citizen">Citizen (Report & Verify)</option>
+                <option value="department">Department Official (Claim Repairs)</option>
+              </select>
+            </label>
+            <Button className="wide" style={{ marginTop: 12 }}>Sign In with Custom Account</Button>
+          </form>
+        </Card>
+      </main>
+    </div>
+  );
+}
+
+function Shell({ currentUser, onLogout }: { currentUser: UserAccount; onLogout: () => void }) {
+  const official = currentUser.role === "department";
   const [page, setPage] = useState<Page>(official ? "department" : "dashboard");
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // Issues State
   const [issues, setIssues] = useState<IssueItem[]>(DEFAULT_DEMO_ISSUES);
   const [selectedIssueId, setSelectedIssueId] = useState<string>(DEFAULT_DEMO_ISSUES[0].id);
-
-  // Active Citizen user switcher for hackathon testing
-  const [citizenIndex, setCitizenIndex] = useState<number>(0);
-  const currentCitizen = CITIZEN_USERS[citizenIndex];
-  const activeUser = official ? TECHNICIAN_USER : currentCitizen;
 
   const fetchIssues = useCallback(async () => {
     try {
@@ -1229,12 +1405,35 @@ function Shell({ role, onChangeRole }: { role: Role; onChangeRole: () => void })
           <strong>Community standard</strong>
           <p>An issue is resolved only when citizens verify it.</p>
         </div>
-        <div className="profile" style={{ cursor: "default" }}>
-          <span>{official ? "RP" : "MC"}</span>
-          <div>
-            <strong>{activeUser.name}</strong>
-            <small>{official ? "Department Technician" : "Verified resident"}</small>
+
+        <div style={{ marginTop: "auto", borderTop: "1px solid #1e293b", paddingTop: 14 }}>
+          <div className="profile" style={{ cursor: "default", marginBottom: 10 }}>
+            <span>{currentUser.avatar}</span>
+            <div>
+              <strong>{currentUser.name}</strong>
+              <small>{currentUser.roleTitle}</small>
+            </div>
           </div>
+          <button
+            onClick={onLogout}
+            style={{
+              width: "100%",
+              padding: "8px 12px",
+              background: "#ffffff0f",
+              border: "1px solid #ffffff1a",
+              borderRadius: 6,
+              color: "#f87171",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              fontSize: 12,
+              fontWeight: 600,
+            }}
+          >
+            <Icon name="logOut" size={15} />
+            Sign out
+          </button>
         </div>
       </aside>
 
@@ -1242,38 +1441,39 @@ function Shell({ role, onChangeRole }: { role: Role; onChangeRole: () => void })
         <header className={`topbar ${official ? "official-topbar" : ""}`}>
           <button className="mobile-menu" onClick={() => setMobileOpen(true)}><Icon name="menu" /></button>
           <div className="mobile-brand">CivicResolve</div>
-          <div className="top-actions">
-            {!official && (
-              <button
-                className="role-switch"
-                style={{ background: "#e8f1fc", color: "#1656a7" }}
-                onClick={() => setCitizenIndex((prev) => (prev === 0 ? 1 : 0))}
-                title="Switch between Reporter and Neighbor to test voting rules"
-              >
-                <Icon name="users" size={16} />
-                Voter: <strong>{currentCitizen.name.split(" ")[0]}</strong> (Switch)
-              </button>
-            )}
-            <button className="role-switch" onClick={onChangeRole}>
-              <Icon name={official ? "building" : "users"} size={17} />
-              {official ? "Department" : "Citizen"} · Switch role
-            </button>
+          <div className="top-actions" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", background: "#f1f5f9", borderRadius: 20 }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: official ? "#2567c3" : "#18704c" }} />
+              <span style={{ fontSize: 13, color: "#334155", fontWeight: 600 }}>{currentUser.name} ({currentUser.roleTitle})</span>
+            </div>
+            <Button variant="secondary" icon="logOut" onClick={onLogout} style={{ padding: "6px 14px", fontSize: 13 }}>
+              Log out
+            </Button>
           </div>
         </header>
 
         <main className={page === "map" ? "map-main" : ""}>
-          {page === "dashboard" && <Dashboard issues={issues} go={go} onSelectIssue={setSelectedIssueId} />}
+          {page === "dashboard" && (
+            <Dashboard
+              issues={issues}
+              currentUser={currentUser}
+              go={go}
+              onSelectIssue={setSelectedIssueId}
+            />
+          )}
           {page === "report" && (
             <ReportIssue
               go={go}
-              currentUser={activeUser}
+              currentUser={currentUser}
               onRefresh={fetchIssues}
               onSelectIssue={setSelectedIssueId}
             />
           )}
           {page === "issue" && (
             <IssueDetails
-              issue={activeIssue}
+              issueId={selectedIssueId}
+              cachedIssue={activeIssue}
+              currentUser={currentUser}
               go={go}
               onRefresh={fetchIssues}
             />
@@ -1282,7 +1482,7 @@ function Shell({ role, onChangeRole }: { role: Role; onChangeRole: () => void })
           {page === "verify" && (
             <VerifyPage
               issue={activeIssue}
-              currentUser={activeUser}
+              currentUser={currentUser}
               go={go}
               onRefresh={fetchIssues}
             />
@@ -1298,7 +1498,7 @@ function Shell({ role, onChangeRole }: { role: Role; onChangeRole: () => void })
             <RepairClaims
               issues={issues}
               selectedIssueId={selectedIssueId}
-              currentUser={TECHNICIAN_USER}
+              currentUser={currentUser}
               go={go}
               onRefresh={fetchIssues}
               onSelectIssue={setSelectedIssueId}
@@ -1311,49 +1511,32 @@ function Shell({ role, onChangeRole }: { role: Role; onChangeRole: () => void })
   );
 }
 
-function RoleSelection({ select }: { select: (role: Role) => void }) {
-  return (
-    <div className="entry-page">
-      <header className="entry-header">
-        <div className="entry-brand"><span><Icon name="check" /></span><strong>CivicResolve</strong></div>
-        <span>Accountable civic resolution</span>
-      </header>
-      <main className="entry-content">
-        <p className="eyebrow">Community-powered accountability</p>
-        <h1>Making civic resolution accountable.</h1>
-        <p className="entry-subtitle">Report issues. Verify repairs. Build better communities.</p>
-        <div className="role-question">
-          <h2>How are you using CivicResolve?</h2>
-          <p>Choose your role to access the right tools and dashboard.</p>
-        </div>
-        <div className="role-grid">
-          <button className="role-card citizen-role" onClick={() => select("citizen")}>
-            <span className="role-icon"><Icon name="users" size={31} /></span>
-            <div>
-              <p className="eyebrow">Community access</p>
-              <h2>I’m a Citizen</h2>
-              <p>Report civic issues, track your complaints, and verify whether repairs in your community are actually complete.</p>
-            </div>
-            <span className="role-cta">Continue as Citizen <Icon name="arrow" size={18} /></span>
-          </button>
-          <button className="role-card department-role" onClick={() => select("department")}>
-            <span className="role-icon"><Icon name="building" size={31} /></span>
-            <div>
-              <p className="eyebrow">Official access</p>
-              <h2>I’m a Department</h2>
-              <p>Manage civic complaints, assign repairs, submit evidence, and monitor community verification.</p>
-            </div>
-            <span className="role-cta">Continue as Department <Icon name="arrow" size={18} /></span>
-          </button>
-        </div>
-      </main>
-    </div>
-  );
-}
-
 export default function App() {
-  const [role, setRole] = useState<Role | null>("citizen");
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => {
+    const saved = localStorage.getItem("civic_active_user");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return PRESET_ACCOUNTS[0];
+      }
+    }
+    return PRESET_ACCOUNTS[0]; // default to Maya Chen for seamless initial experience
+  });
 
-  if (!role) return <RoleSelection select={setRole} />;
-  return <Shell role={role} onChangeRole={() => setRole((prev) => (prev === "citizen" ? "department" : "citizen"))} />;
+  const handleLogin = (user: UserAccount) => {
+    setCurrentUser(user);
+    localStorage.setItem("civic_active_user", JSON.stringify(user));
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    localStorage.removeItem("civic_active_user");
+  };
+
+  if (!currentUser) {
+    return <AccountLoginScreen onLogin={handleLogin} />;
+  }
+
+  return <Shell currentUser={currentUser} onLogout={handleLogout} />;
 }
