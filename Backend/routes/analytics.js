@@ -74,3 +74,4 @@ router.get('/durability', async (req, res) => {
 
 
 export default router;
+// GET /analytics/durability

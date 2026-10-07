@@ -155,3 +155,4 @@ router.post(
 
 
 export default router;
+// POST /issues/:id/verify

@@ -108,3 +108,4 @@ router.post('/:id/demo-trigger-expire', async (req, res) => {
 
 
 export default router;
+// POST /issues/:id/demo-trigger-expire

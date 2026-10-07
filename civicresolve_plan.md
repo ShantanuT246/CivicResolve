@@ -237,10 +237,25 @@ router.get('/nearby', async (req, res) => {
 **Also create this SQL function in Supabase:**
 
 ```sql
-CREATE OR REPLACE FUNCTION get_nearby_issues(lat FLOAT, lng FLOAT, radius_meters FLOAT)
-RETURNS TABLE(...) AS $$
+CREATE OR REPLACE FUNCTION get_nearby_issues(lat FLOAT8, lng FLOAT8, radius_meters FLOAT8)
+RETURNS TABLE (
+  id UUID,
+  title TEXT,
+  category TEXT,
+  status TEXT,
+  latitude DOUBLE PRECISION,
+  longitude DOUBLE PRECISION,
+  distance_meters DOUBLE PRECISION,
+  before_image_url TEXT,
+  after_image_url TEXT,
+  repair_notes TEXT,
+  claimed_at TIMESTAMPTZ,
+  verification_deadline TIMESTAMPTZ,
+  confirm_count BIGINT,
+  dispute_count BIGINT
+) AS $$
   SELECT
-    ci.id, ci.title, ci.category, ci.status,
+    ci.id, ci.title, ci.category, ci.status::TEXT AS status,
     ST_Y(ci.location::geometry) AS latitude,
     ST_X(ci.location::geometry) AS longitude,
     ST_Distance(ci.location, ST_MakePoint(lng, lat)::geography) AS distance_meters,
