@@ -2,7 +2,7 @@ const BASE_URL =
   import.meta.env.VITE_API_BASE || "http://localhost:3001/api";
 
 export const api = {
-  // Auth
+  // Auth — direct Supabase email & password authentication
   login: (email: string, password: string, role?: "citizen" | "department", name?: string) =>
     fetch(`${BASE_URL}/auth/login`, {
       method: "POST",

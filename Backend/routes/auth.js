@@ -1,16 +1,10 @@
 import express from 'express';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import crypto from 'crypto';
 import { supabase } from '../db.js';
 
 const router = express.Router();
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ACCOUNTS_FILE = path.resolve(__dirname, '../data/accounts.json');
 
-// Base preset accounts
-const DEFAULT_ACCOUNTS = [
+// Fallback preset demo accounts (Shan removed)
+const DEFAULT_PRESETS = [
   {
     id: '00000000-0000-0000-0000-000000000001',
     name: 'Maya Chen',
@@ -41,61 +35,17 @@ const DEFAULT_ACCOUNTS = [
     tagline: 'Performs fixes and submits before/after evidence claims.',
     avatar: 'JM',
   },
+  {
+    id: '89a2a0ac-487f-4d16-a629-e1334d7c7aed',
+    name: 'Supervisor Smith',
+    email: 'dept.lead@cityworks.gov',
+    password: 'deptpass456',
+    role: 'department',
+    roleTitle: 'Public Works (Department Official)',
+    tagline: 'Official municipal personnel responsible for resolving reported civic complaints.',
+    avatar: 'SS',
+  },
 ];
-
-function loadAccounts() {
-  try {
-    if (fs.existsSync(ACCOUNTS_FILE)) {
-      const data = JSON.parse(fs.readFileSync(ACCOUNTS_FILE, 'utf-8'));
-      if (Array.isArray(data) && data.length > 0) {
-        // Ensure preset accounts exist
-        const emails = new Set(data.map((a) => a.email.toLowerCase()));
-        for (const preset of DEFAULT_ACCOUNTS) {
-          if (!emails.has(preset.email.toLowerCase())) {
-            data.push(preset);
-          }
-        }
-        return data;
-      }
-    }
-  } catch (err) {
-    console.error('Error loading accounts file, fallback to presets:', err);
-  }
-  return [...DEFAULT_ACCOUNTS];
-}
-
-function saveAccounts(accounts) {
-  try {
-    fs.mkdirSync(path.dirname(ACCOUNTS_FILE), { recursive: true });
-    fs.writeFileSync(ACCOUNTS_FILE, JSON.stringify(accounts, null, 2), 'utf-8');
-  } catch (err) {
-    console.error('Error saving accounts file:', err);
-  }
-}
-
-// Sync user to Supabase users table so foreign keys (reporter_id, technician_id, user_id) work
-async function syncUserToSupabase(user) {
-  try {
-    const dbRole = user.role === 'citizen' ? 'resident' : 'technician';
-    const { error } = await supabase.from('users').upsert({
-      id: user.id,
-      name: user.name,
-      role: dbRole,
-    });
-    if (error) {
-      console.warn('Supabase user sync notice:', error.message);
-    }
-  } catch (e) {
-    console.warn('Supabase user sync error:', e.message);
-  }
-}
-
-let accounts = loadAccounts();
-
-// Pre-sync preset accounts in background
-for (const acc of accounts) {
-  syncUserToSupabase(acc).catch(() => {});
-}
 
 function deriveInitials(name) {
   const parts = (name || '').trim().split(/\s+/);
@@ -117,118 +67,298 @@ function formatTagline(role) {
     : 'Active community resident reporting and validating municipal repairs.';
 }
 
-// POST /api/auth/login
-// Supports existing accounts OR seamless auto-provisioning for any citizen/dept email
+// Sync user to Supabase public.users table so foreign keys (reporter_id, technician_id, user_id) work
+async function syncUserToSupabase(id, name, role) {
+  try {
+    const dbRole = role === 'department' ? 'technician' : 'resident';
+    const { error } = await supabase.from('users').upsert({
+      id,
+      name,
+      role: dbRole,
+    });
+    if (error) {
+      console.warn('Supabase public.users sync notice:', error.message);
+    }
+  } catch (e) {
+    console.warn('Supabase public.users sync error:', e.message);
+  }
+}
+
+// POST /api/auth/login — Supabase email and password authentication
 router.post('/login', async (req, res) => {
   try {
     const { email, password, role, name } = req.body || {};
 
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
+    if (!email || !email.trim()) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+    if (!password) {
+      return res.status(400).json({ error: 'Password is required' });
     }
 
     const cleanEmail = email.toLowerCase().trim();
-    accounts = loadAccounts();
-    const existing = accounts.find((a) => a.email.toLowerCase() === cleanEmail);
+    const effectiveRole = role === 'department' ? 'department' : 'citizen';
 
-    if (existing) {
-      if (existing.password !== password) {
-        return res.status(401).json({ error: 'Incorrect password for this account' });
+    // 1. Authenticate against Supabase Auth using signInWithPassword
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+      email: cleanEmail,
+      password,
+    });
+
+    let user = signInData?.user;
+
+    // 2. If login failed with Supabase
+    if (signInError || !user) {
+      // Check if user already exists in Supabase Auth
+      const { data: usersData } = await supabase.auth.admin.listUsers();
+      const existingUser = (usersData?.users || []).find(
+        (u) => (u.email || '').toLowerCase() === cleanEmail
+      );
+
+      if (existingUser) {
+        // User exists, but password was incorrect
+        return res.status(401).json({
+          error: 'Incorrect password for this account. Please try again.',
+        });
       }
 
-      await syncUserToSupabase(existing);
-      const { password: _pw, ...safeUser } = existing;
-      return res.json({ success: true, user: safeUser });
+      // User does not exist yet: auto-provision new account in Supabase
+      const rawName =
+        (name && name.trim()) ||
+        cleanEmail.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+      // Check if this matches a default preset ID
+      const matchingPreset = DEFAULT_PRESETS.find(p => p.email.toLowerCase() === cleanEmail);
+      const customId = matchingPreset?.id || undefined;
+
+      const { data: createData, error: createError } = await supabase.auth.admin.createUser({
+        ...(customId ? { id: customId } : {}),
+        email: cleanEmail,
+        password,
+        email_confirm: true,
+        user_metadata: {
+          name: rawName,
+          role: effectiveRole,
+        },
+      });
+
+      if (createError) {
+        console.error('Supabase createUser error:', createError);
+        return res.status(500).json({ error: 'Failed to create user in Supabase: ' + createError.message });
+      }
+
+      user = createData.user;
     }
 
-    // New user signing in: create account seamlessly if role is specified or inferred
-    const effectiveRole = role === 'department' ? 'department' : 'citizen';
-    const rawName =
+    // 3. Resolve user profile details
+    const userName =
+      user.user_metadata?.name ||
       (name && name.trim()) ||
       cleanEmail.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
-    const newUser = {
-      id: crypto.randomUUID(),
-      name: rawName,
+    const userRole = role || user.user_metadata?.role || effectiveRole;
+
+    // 4. Ensure public.users table in Supabase is updated
+    await syncUserToSupabase(user.id, userName, userRole);
+
+    const safeUser = {
+      id: user.id,
+      name: userName,
       email: cleanEmail,
-      password: password,
-      role: effectiveRole,
-      roleTitle: formatRoleTitle(effectiveRole),
-      tagline: formatTagline(effectiveRole),
-      avatar: deriveInitials(rawName),
+      role: userRole,
+      roleTitle: formatRoleTitle(userRole),
+      tagline: formatTagline(userRole),
+      avatar: deriveInitials(userName),
     };
 
-    accounts.push(newUser);
-    saveAccounts(accounts);
-    await syncUserToSupabase(newUser);
-
-    const { password: _pw, ...safeUser } = newUser;
     return res.json({
       success: true,
       user: safeUser,
-      created: true,
-      message: 'Account created and signed in successfully',
+      message: 'Authenticated directly via Supabase database',
     });
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('Supabase login error:', error);
     res.status(500).json({ error: error.message || 'Authentication failed' });
   }
 });
 
-// POST /api/auth/register
+// POST /api/auth/register — provision new user with email and password in Supabase
 router.post('/register', async (req, res) => {
   try {
     const { email, password, name, role } = req.body || {};
 
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
+    if (!email || !email.trim()) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+    if (!password) {
+      return res.status(400).json({ error: 'Password is required' });
     }
 
     const cleanEmail = email.toLowerCase().trim();
-    accounts = loadAccounts();
-    const existing = accounts.find((a) => a.email.toLowerCase() === cleanEmail);
+    const effectiveRole = role === 'department' ? 'department' : 'citizen';
+
+    // Check if user already exists in Supabase Auth
+    const { data: usersData } = await supabase.auth.admin.listUsers();
+    const existing = (usersData?.users || []).find(
+      (u) => (u.email || '').toLowerCase() === cleanEmail
+    );
 
     if (existing) {
-      return res.status(409).json({ error: 'An account already exists with this email. Please sign in.' });
+      // Try to sign in with the provided password first
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password,
+      });
+
+      if (authError || !authData?.user) {
+        // Password mismatch — use admin API to force-update the password.
+        // This handles the case where the user was deleted from public.users
+        // but still exists in Supabase Auth (e.g. after a manual DB reset).
+        console.log(`Password mismatch for ${cleanEmail} — force-updating via admin API`);
+        const rawName =
+          (name && name.trim()) ||
+          existing.user_metadata?.name ||
+          cleanEmail.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+        const { error: updateError } = await supabase.auth.admin.updateUserById(existing.id, {
+          password,
+          email_confirm: true,
+          user_metadata: {
+            name: rawName,
+            role: effectiveRole,
+          },
+        });
+
+        if (updateError) {
+          console.error('Supabase admin updateUser error:', updateError);
+          return res.status(500).json({ error: 'Failed to reset account password: ' + updateError.message });
+        }
+
+        await syncUserToSupabase(existing.id, rawName, effectiveRole);
+
+        return res.status(201).json({
+          success: true,
+          user: {
+            id: existing.id,
+            name: rawName,
+            email: cleanEmail,
+            role: effectiveRole,
+            roleTitle: formatRoleTitle(effectiveRole),
+            tagline: formatTagline(effectiveRole),
+            avatar: deriveInitials(rawName),
+          },
+          message: 'Account password reset and re-synced in Supabase.',
+        });
+      }
+
+      const userName = existing.user_metadata?.name || name || cleanEmail.split('@')[0];
+      await syncUserToSupabase(existing.id, userName, effectiveRole);
+
+      return res.json({
+        success: true,
+        user: {
+          id: existing.id,
+          name: userName,
+          email: cleanEmail,
+          role: effectiveRole,
+          roleTitle: formatRoleTitle(effectiveRole),
+          tagline: formatTagline(effectiveRole),
+          avatar: deriveInitials(userName),
+        },
+        message: 'Account already exists. Signed in successfully via Supabase.',
+      });
     }
 
-    const effectiveRole = role === 'department' ? 'department' : 'citizen';
     const rawName =
       (name && name.trim()) ||
       cleanEmail.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
-    const newUser = {
-      id: crypto.randomUUID(),
-      name: rawName,
+    const { data: createData, error: createError } = await supabase.auth.admin.createUser({
       email: cleanEmail,
-      password: password,
-      role: effectiveRole,
-      roleTitle: formatRoleTitle(effectiveRole),
-      tagline: formatTagline(effectiveRole),
-      avatar: deriveInitials(rawName),
-    };
+      password,
+      email_confirm: true,
+      user_metadata: {
+        name: rawName,
+        role: effectiveRole,
+      },
+    });
 
-    accounts.push(newUser);
-    saveAccounts(accounts);
-    await syncUserToSupabase(newUser);
+    if (createError) {
+      console.error('Supabase registration error:', createError);
+      return res.status(500).json({ error: createError.message });
+    }
 
-    const { password: _pw, ...safeUser } = newUser;
+    const newUser = createData.user;
+    await syncUserToSupabase(newUser.id, rawName, effectiveRole);
+
     return res.status(201).json({
       success: true,
-      user: safeUser,
-      message: 'Account registered successfully',
+      user: {
+        id: newUser.id,
+        name: rawName,
+        email: cleanEmail,
+        role: effectiveRole,
+        roleTitle: formatRoleTitle(effectiveRole),
+        tagline: formatTagline(effectiveRole),
+        avatar: deriveInitials(rawName),
+      },
+      message: 'Account registered directly in Supabase database',
     });
   } catch (error) {
-    console.error('Registration error:', error);
+    console.error('Supabase registration error:', error);
     res.status(500).json({ error: error.message || 'Registration failed' });
   }
 });
 
-// GET /api/auth/accounts — returns safe list for demo / fast fill
-router.get('/accounts', (_req, res) => {
-  accounts = loadAccounts();
-  const safe = accounts.map(({ password: _pw, ...u }) => u);
-  res.json({ accounts: safe });
+// GET /api/auth/accounts — returns preset accounts from Supabase (excluding Shan)
+router.get('/accounts', async (_req, res) => {
+  try {
+    const { data: authData } = await supabase.auth.admin.listUsers();
+    const { data: publicUsers } = await supabase.from('users').select('*');
+
+    const publicMap = {};
+    (publicUsers || []).forEach((u) => {
+      publicMap[u.id] = u;
+    });
+
+    // Preset passwords map for demo pills
+    const presetPasswords = {
+      'maya@civicresolve.in': 'citizen123',
+      'alex@civicresolve.in': 'citizen123',
+      'john@publicworks.gov': 'dept1234',
+      'dept.lead@cityworks.gov': 'deptpass456',
+    };
+
+    if (authData?.users && authData.users.length > 0) {
+      const accounts = authData.users
+        // Filter out shan@gmail.com and shantanu@gmail.com from demo quick fill pills
+        .filter((u) => !['shan@gmail.com', 'shantanu@gmail.com'].includes(u.email.toLowerCase()))
+        .map((u) => {
+          const p = publicMap[u.id];
+          const name = p?.name || u.user_metadata?.name || u.email.split('@')[0];
+          const role =
+            u.user_metadata?.role === 'department' || p?.role === 'technician'
+              ? 'department'
+              : 'citizen';
+          return {
+            id: u.id,
+            name,
+            email: u.email,
+            password: presetPasswords[u.email.toLowerCase()] || 'citizen123',
+            role,
+            roleTitle: formatRoleTitle(role),
+            tagline: formatTagline(role),
+            avatar: deriveInitials(name),
+          };
+        });
+      return res.json({ accounts });
+    }
+
+    res.json({ accounts: DEFAULT_PRESETS });
+  } catch (err) {
+    console.error('Fetch accounts error:', err);
+    res.json({ accounts: DEFAULT_PRESETS });
+  }
 });
 
 export default router;

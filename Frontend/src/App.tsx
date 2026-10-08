@@ -1755,11 +1755,12 @@ function LandingPage({
   );
 }
 
-// ── Login / Register Page (Email + Password Authentication) ───────────────
+// ── Login / Register Page (Email + Password Supabase Database Authentication) ────
 const PRESET_DEMO_ACCOUNTS = [
   { role: "citizen" as const, email: "maya@civicresolve.in", password: "citizen123", name: "Maya Chen", title: "Citizen (Reporter)" },
   { role: "citizen" as const, email: "alex@civicresolve.in", password: "citizen123", name: "Alex Rivera", title: "Citizen (Validator)" },
   { role: "department" as const, email: "john@publicworks.gov", password: "dept1234", name: "John Miller", title: "Department (Technician)" },
+  { role: "department" as const, email: "dept.lead@cityworks.gov", password: "deptpass456", name: "Supervisor Smith", title: "Department (Supervisor)" },
 ];
 
 function LoginPage({
@@ -1786,6 +1787,10 @@ function LoginPage({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!email.trim() || !password) {
+      setError("Please enter both email and password");
+      return;
+    }
     setError("");
     setSuccessMsg("");
     setLoading(true);
@@ -1793,19 +1798,19 @@ function LoginPage({
     try {
       if (mode === "register") {
         const res = await api.register({
-          email,
+          email: email.trim(),
           password,
           name: name.trim() || undefined,
           role,
         });
-        setSuccessMsg(res.message || "Account created! Signing in...");
+        setSuccessMsg(res.message || "Account created in Supabase! Signing in...");
         onLogin(res.user as UserAccount);
       } else {
-        const res = await api.login(email, password, role, name.trim() || undefined);
+        const res = await api.login(email.trim(), password, role, name.trim() || undefined);
         onLogin(res.user as UserAccount);
       }
     } catch (err: unknown) {
-      setError((err as Error)?.message || "Authentication failed");
+      setError((err as Error)?.message || "Supabase authentication failed");
     } finally {
       setLoading(false);
     }
@@ -1885,7 +1890,7 @@ function LoginPage({
             )}
           </div>
         </div>
-        <small>CivicResolve Platform · Supabase + PostGIS geospatial store</small>
+        <small>CivicResolve Platform · Supabase Auth & PostGIS geospatial store</small>
       </div>
 
       {/* Right form panel */}
@@ -1990,8 +1995,8 @@ function LoginPage({
         <h1>{mode === "signin" ? `Sign in as ${isDept ? "Department" : "Citizen"}` : `Register as ${isDept ? "Department Official" : "Citizen"}`}</h1>
         <p style={{ color: "var(--slate-500)", fontSize: 13, marginBottom: 20 }}>
           {mode === "signin"
-            ? "Enter your email and password to access your dashboard. Any email is supported."
-            : "Create a new account with your email and password. Your identity will be synced to Supabase."}
+            ? "Enter your email and password to authenticate directly via Supabase database."
+            : "Enter your email, password, and name to create a user account in Supabase."}
         </p>
 
         {/* Quick-fill preset accounts */}
@@ -2086,11 +2091,11 @@ function LoginPage({
             className="btn btn-primary auth-submit wide"
             disabled={loading}
           >
-            {loading ? "Processing…" : mode === "signin" ? "Sign in" : "Create account"} <Icon name="arrow" size={16} />
+            {loading ? "Authenticating via Supabase…" : mode === "signin" ? "Sign in" : "Create account"} <Icon name="arrow" size={16} />
           </button>
 
           <p className="auth-security" style={{ marginTop: 18 }}>
-            <Icon name="check" size={12} /> Live PostGIS database connected · User stored in Supabase
+            <Icon name="check" size={12} /> Supabase Auth + PostgreSQL users table · DBthon Hackathon Direct Database Auth
           </p>
         </form>
       </div>
@@ -2174,21 +2179,25 @@ function Shell({
   return (
     <div className="app-shell">
       <aside className={`sidebar ${mobileOpen ? "mobile-open" : ""}`}>
-        <button
+        <div
           className="brand"
-          onClick={onGoToLanding}
-          style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", width: "100%", textAlign: "left" }}
-          title="Return to Public Landing Page"
+          style={{ display: "flex", alignItems: "center", cursor: "pointer" }}
         >
-          <span><Icon name="check" /></span>
-          <div>
-            <strong>CivicResolve</strong>
-            <small>← Overview / Landing</small>
+          <div
+            onClick={onGoToLanding}
+            title="Return to Public Landing Page"
+            style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}
+          >
+            <span><Icon name="check" /></span>
+            <div>
+              <strong>CivicResolve</strong>
+              <small>← Overview / Landing</small>
+            </div>
           </div>
           <button className="mobile-close" onClick={(e) => { e.stopPropagation(); setMobileOpen(false); }}>
             <Icon name="x" />
           </button>
-        </button>
+        </div>
 
         <nav>
           <p>WORKSPACE</p>
