@@ -726,9 +726,32 @@ function IssueDetails({
         <Lifecycle status={active.status} />
       </Card>
 
+      {/* Toast notification — fixed top-right corner */}
       {demoMessage && (
-        <div style={{ background: "#e8f1fc", color: "#1656a7", padding: "12px 16px", borderRadius: 8, marginBottom: 16, fontWeight: 600 }}>
-          ⚡ {demoMessage}
+        <div style={{
+          position: "fixed",
+          top: 24,
+          right: 24,
+          zIndex: 9999,
+          background: "#1656a7",
+          color: "#fff",
+          padding: "14px 20px",
+          borderRadius: 10,
+          fontWeight: 600,
+          fontSize: 14,
+          boxShadow: "0 8px 32px rgba(22,86,167,0.35)",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          maxWidth: 380,
+          animation: "slideInToast 0.25s ease",
+        }}>
+          <span style={{ fontSize: 18 }}>⚡</span>
+          <span style={{ flex: 1 }}>{demoMessage}</span>
+          <button
+            onClick={() => setDemoMessage("")}
+            style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", fontSize: 18, lineHeight: 1, padding: 0, opacity: 0.7 }}
+          >×</button>
         </div>
       )}
 
@@ -748,8 +771,31 @@ function IssueDetails({
                 <figcaption><span>BEFORE</span>Citizen report photo</figcaption>
               </figure>
               <figure>
-                <img className="after-photo" src={active.after_image_url || PHOTO_FALLBACK} alt="After repair" />
-                <figcaption><span>AFTER</span>{active.after_image_url ? "Official department evidence" : "Awaiting repair claim"}</figcaption>
+                {active.after_image_url ? (
+                  <img className="after-photo" src={active.after_image_url} alt="After repair" />
+                ) : (
+                  <div className="after-photo" style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: "#f1f5f9",
+                    height: "100%",
+                    minHeight: 160,
+                    borderRadius: 8,
+                    color: "#94a3b8",
+                    gap: 8,
+                    border: "2px dashed #cbd5e1",
+                  }}>
+                    <Icon name="camera" size={32} />
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>Awaiting repair claim</span>
+                    <small style={{ fontSize: 11 }}>Department must submit evidence first</small>
+                  </div>
+                )}
+                <figcaption>
+                  <span>AFTER</span>
+                  {active.after_image_url ? "Official department evidence" : "Not yet submitted"}
+                </figcaption>
               </figure>
             </div>
             <div className="repair-details">
